@@ -1,10 +1,13 @@
 import streamlit as st
-from apps import json_format
+from apps.json_format import app as json_format
 from apps.chat_converter import app as chat_converter
-
+from apps.json_merge import app as json_merge
+from apps.chat1 import app as chat1
 PAGES = {
-    "App 1": json_format,
-    "Chat Converter": chat_converter
+    "Chat": chat1,
+    "Chat Converter": chat_converter,
+    "Json formatter": json_format,
+    "Json merge": json_merge,
 }
 
 def main():
