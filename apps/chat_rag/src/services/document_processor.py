@@ -3,6 +3,7 @@ from typing import List, Dict
 from langchain.docstore.document import Document
 from src.domain.interfaces import DocumentExtractor, TextCleaner
 from src.domain.document import ChatMessage, ChatMetadata
+import logging
 
 class DocumentProcessor:
     def __init__(self, 
@@ -32,7 +33,8 @@ class DocumentProcessor:
         
         for message in messages:
             cleaned_content = self._clean_text(message.content)
-            
+            if len(cleaned_content) < 10:
+                raise RuntimeError("Content too short!")
             # Combine message-specific metadata with base metadata
             document_metadata = {
                 **base_metadata,
@@ -45,7 +47,8 @@ class DocumentProcessor:
             
             # Create formatted content with context
             formatted_content = self._format_content(message, cleaned_content)
-            
+            logging.info(f"Formatted: \n{cleaned_content}")
+            logging.info(document_metadata)
             doc = Document(
                 page_content=formatted_content,
                 metadata=document_metadata

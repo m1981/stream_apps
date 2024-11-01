@@ -49,17 +49,17 @@ def setup_ingestion(settings: Settings):
 def main():
     load_dotenv()
     settings = Settings()
+    vector_store = None
 
     if len(sys.argv) > 1 and sys.argv[1] == '--ingest':
         vector_store = setup_ingestion(settings)
         print("Ingestion completed successfully")
-        return
 
-    # Chat mode
-    vector_store = ChromaVectorStore(
-        collection_name=settings.COLLECTION_NAME,
-        persist_directory=settings.PERSIST_DIRECTORY
-    )
+    if vector_store is None:
+        vector_store = ChromaVectorStore(
+            collection_name=settings.COLLECTION_NAME,
+            persist_directory=settings.PERSIST_DIRECTORY
+        )
 
     chat_service = ChatService(
         vector_store=vector_store,

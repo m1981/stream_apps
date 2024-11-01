@@ -9,9 +9,16 @@
             "docker compose run tests_ut"
           ]
         },
+
         "App start": {
           "commands": [
-            "docker compose run run_app"
+            "docker compose run app_run"
+          ]
+        },
+
+        "App ingests": {
+          "commands": [
+            "docker compose run app_ingest"
           ]
         }
 

@@ -13,10 +13,20 @@ services:
       && coverage html --fail-under=40
       || (echo ERROR Tests failed or Coverage under target! && exit 1)"
 
-  run_app:
+  app_run:
     image: ${TESTS_IMAGE:?err}
     environment:
       - OPENAI_API_KEY
+      - ANONYMIZED_TELEMETRY
     volumes:
       - ${SOURCE_DIR:?err}:/usr/src/app
     command: python main.py
+
+  app_ingest:
+    image: ${TESTS_IMAGE:?err}
+    environment:
+      - OPENAI_API_KEY
+      - ANONYMIZED_TELEMETRY
+    volumes:
+      - ${SOURCE_DIR:?err}:/usr/src/app
+    command: python main.py --ingest

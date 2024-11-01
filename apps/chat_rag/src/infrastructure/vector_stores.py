@@ -5,7 +5,10 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from src.domain.interfaces import VectorStore
 from src.domain.document import ChatMessage
+import chromadb
+from chromadb.config import Settings
 import logging
+import os
 
 class ChromaVectorStore(VectorStore):
     DEFAULT_K = 4
@@ -14,40 +17,40 @@ class ChromaVectorStore(VectorStore):
     def __init__(self,
                  collection_name: str,
                  persist_directory: str,
-                 embedding_model: Optional[Any] = None):
+                 embedding_model = "text-embedding-3-large"):
         if not collection_name.strip():
             raise ValueError("Collection name cannot be empty")
         if not persist_directory.strip():
             raise ValueError("Persist directory cannot be empty")
+        
+        # Ensure directory exists
+        os.makedirs(persist_directory, exist_ok=True)
 
         try:
-            self.embedding_model = embedding_model or OpenAIEmbeddings()
+            # Create Chroma client with new configuration
+            self.client = chromadb.PersistentClient(
+                path=persist_directory,
+                settings=Settings(anonymized_telemetry=False)
+            )
+
+            self.embedding_model = OpenAIEmbeddings(model=embedding_model)
+            
+            # Initialize Langchain's Chroma wrapper
             self.store = Chroma(
+                client=self.client,
                 collection_name=collection_name,
                 embedding_function=self.embedding_model,
-                persist_directory=persist_directory
             )
+            
         except Exception as e:
             logging.error(f"Failed to initialize ChromaVectorStore: {str(e)}")
             raise
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-    def close(self):
-        if hasattr(self, 'store'):
-            self.store.persist()
-
     def as_retriever(self, search_kwargs: Optional[Dict[str, Any]] = None) -> Any:
-        collection_size = len(self.store.get())
-        logging.info(f"Vector store contains {collection_size} documents")
+        collection_size = self.verify_store()
         if collection_size == 0:
             raise ValueError("Vector store is empty!")
 
-        # Pass search_kwargs if provided
         if search_kwargs:
             return self.store.as_retriever(search_kwargs=search_kwargs)
         return self.store.as_retriever()
@@ -60,7 +63,9 @@ class ChromaVectorStore(VectorStore):
                 raise TypeError(f"Expected Document type, got {type(doc)}")
             if not doc.page_content:
                 raise ValueError(f"Document has empty content: {doc.metadata}")
-        self.store.from_documents(documents, self.embedding_model)
+        
+        # Use add_documents instead of from_documents
+        self.store.add_documents(documents)
         logging.info(f"Successfully stored {len(documents)} documents")
 
     def search(self, query: str, k: int = DEFAULT_K) -> List[Document]:
@@ -69,3 +74,13 @@ class ChromaVectorStore(VectorStore):
         if not query.strip():
             raise ValueError("Query string cannot be empty")
         return self.store.similarity_search(query, k=k)
+
+    def verify_store(self) -> int:
+        try:
+            collection = self.store.get()
+            count = len(collection['ids']) if collection else 0
+            logging.info(f"Vector store contains {count} documents")
+            return count
+        except Exception as e:
+            logging.error(f"Failed to verify vector store: {str(e)}")
+            raise
