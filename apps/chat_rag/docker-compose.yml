@@ -1,0 +1,22 @@
+
+services:
+#  precommit:
+  tests_ut:
+    image: ${TESTS_IMAGE:?err}
+    environment:
+      - OPENAI_API_KEY
+    volumes:
+      - ${SOURCE_DIR:?err}:/usr/src/app
+    command: >
+      sh -c "coverage run -m pytest . --maxfail=3
+      && coverage report
+      && coverage html --fail-under=40
+      || (echo ERROR Tests failed or Coverage under target! && exit 1)"
+
+  run_app:
+    image: ${TESTS_IMAGE:?err}
+    environment:
+      - OPENAI_API_KEY
+    volumes:
+      - ${SOURCE_DIR:?err}:/usr/src/app
+    command: python main.py

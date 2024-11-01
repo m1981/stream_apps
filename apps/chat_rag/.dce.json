@@ -1,0 +1,21 @@
+{
+  "services": {
+    "dev": {
+      "path": ".",
+      "env_file": "./.env.local",
+      "commands": {
+        "UT run": {
+          "commands": [
+            "docker compose run tests_ut"
+          ]
+        },
+        "App start": {
+          "commands": [
+            "docker compose run run_app"
+          ]
+        }
+
+      }
+    }
+  }
+}

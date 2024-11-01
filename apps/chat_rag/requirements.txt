@@ -1,0 +1,15 @@
+chromadb==0.5.16
+kubernetes==31.0.0
+langchain==0.3.5
+langchain-chroma==0.1.4
+langchain-community==0.3.3
+langchain-core==0.3.13
+langchain-openai==0.2.4
+langchain-text-splitters==0.3.1
+openai==1.53.0
+pyasn1_modules==0.4.1
+pydantic==2.9.2
+pyserial==3.5
+pytest==7.4.3
+pytest-cov==4.1.0
+python-dateutil==2.8.2
