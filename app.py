@@ -56,68 +56,34 @@ class TestRunner:
 
             env['PYTHONPATH'] = os.pathsep.join(python_path)
 
-            # Create temporary pytest configuration file
-            pytest_ini_content = """
-[pytest]
-log_cli = true
-log_cli_level = DEBUG
-log_cli_format = %(levelname)s: %(message)s
-addopts = -s -v
-"""
-            pytest_ini = project_root / "pytest.ini"
-            pytest_ini.write_text(pytest_ini_content)
-
-            try:
-                # Run pytest with output capturing
-                cmd = [
+            # Run pytest with additional options for capturing output
+            process = subprocess.Popen(
+                [
                     sys.executable,
                     "-m",
                     "pytest",
                     *test_files_str.split(),
                     "-v",
-                    "--capture=tee-sys",  # This captures output while still showing it
-                    "--show-capture=all",  # Show all captured output
-                    "-s",  # Don't capture stdout
                     "--import-mode=importlib",
-                ]
+                    "--capture=tee-sys",  # Capture both stdout and stderr while showing them
+                    "-s",  # Don't capture stdout (allows print statements to show)
+                    "--log-cli-level=DEBUG",  # Show debug logs
+                    "--log-format=%(levelname)s: %(message)s",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                cwd=str(project_root)
+            )
 
-                # Use Popen with PIPE for both stdout and stderr
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=env,
-                    cwd=str(project_root),
-                    bufsize=1,
-                )
+            stdout, stderr = process.communicate()
+            output = stdout + stderr
 
-                # Collect output in real-time
-                all_output = []
-                while True:
-                    # Read output line by line
-                    stdout_line = process.stdout.readline()
-                    stderr_line = process.stderr.readline()
+            # Format the output for better readability
+            formatted_output = self.format_test_output(output)
 
-                    if stdout_line:
-                        all_output.append(stdout_line)
-                    if stderr_line:
-                        all_output.append(stderr_line)
-
-                    # Check if process has finished
-                    if process.poll() is not None:
-                        # Get remaining output
-                        stdout, stderr = process.communicate()
-                        if stdout:
-                            all_output.append(stdout)
-                        if stderr:
-                            all_output.append(stderr)
-                        break
-
-                output = ''.join(all_output)
-                formatted_output = self.format_test_output(output)
-
-                debug_info = f"""
+            debug_info = f"""
 Test Execution Details:
 ----------------------
 App: {app_name}
@@ -132,11 +98,7 @@ Test Output:
 -----------
 {formatted_output}
 """
-                return process.returncode == 0, debug_info
-
-            finally:
-                # Clean up temporary pytest.ini
-                pytest_ini.unlink()
+            return process.returncode == 0, debug_info
 
         except Exception as e:
             return False, f"Error: {str(e)}\nTest path: {app_test_path}"
@@ -146,29 +108,26 @@ Test Output:
         """Format the test output for better readability"""
         lines = output.split('\n')
         formatted_lines = []
-        for line in lines:
-            line = line.rstrip()
-            if not line:
-                continue
 
-            # Categorize and format different types of output
-            if line.startswith('DEBUG:'):
+        for line in lines:
+            # Highlight debug messages
+            if 'DEBUG:' in line:
                 line = f"? {line}"
-            elif line.startswith(('===', 'collecting', 'running')):
-                line = f"?? {line}"
+            # Highlight print statements
+            elif line.strip() and not line.startswith(('===', '___', 'collecting', 'Test')):
+                line = f"? {line}"
+            # Highlight test results
             elif 'PASSED' in line:
                 line = f"? {line}"
             elif 'FAILED' in line:
                 line = f"? {line}"
             elif 'SKIPPED' in line:
                 line = f"?? {line}"
-            elif not any(x in line for x in ['===', 'collecting', 'PASSED', 'FAILED', 'SKIPPED', 'pytest']):
-                # This should catch print statements and other output
-                line = f"? {line}"
 
             formatted_lines.append(line)
 
         return '\n'.join(formatted_lines)
+
 
 
 
@@ -183,7 +142,7 @@ def run_app_tests(app_name: str, module_name: str) -> None:
     with col2:
         st.write("")  # Spacing
         st.write("")  # Spacing
-        if st.button("? Re-run Tests", key=f"rerun_{app_name}"):
+        if st.button("🔄 Re-run Tests", key=f"rerun_{app_name}"):
             # Clear previous results
             st.session_state.pop(f'test_result_{app_name}', None)
             st.session_state.pop(f'test_output_{app_name}', None)
@@ -203,9 +162,9 @@ def run_app_tests(app_name: str, module_name: str) -> None:
 
         # Display results
         if st.session_state[result_key]:
-            st.success("? All tests passed!")
+            st.success("✅ All tests passed!")
         else:
-            st.error("? Some tests failed!")
+            st.error("❌ Some tests failed!")
 
         # Show test output in expandable section
         with st.expander("Test Details", expanded=not st.session_state[result_key]):
@@ -214,7 +173,7 @@ def run_app_tests(app_name: str, module_name: str) -> None:
 def main():
     st.set_page_config(
         page_title="Multi-App Dashboard",
-        page_icon="?",
+        page_icon="🧪",
         layout="wide"
     )
 
