@@ -34,7 +34,7 @@ class DocumentProcessor:
         for message in messages:
             cleaned_content = self._clean_text(message.content)
             if len(cleaned_content) < 10:
-                raise RuntimeError("Content too short!")
+                continue
             # Combine message-specific metadata with base metadata
             document_metadata = {
                 **base_metadata,
