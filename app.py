@@ -107,40 +107,42 @@ Test Output:
 
 def run_app_tests(app_name: str, module_name: str) -> None:
     """Run tests for selected app and display results"""
+    # Create container for test results
+    test_container = st.container()
+
     col1, col2 = st.columns([3, 1])
     with col1:
         st.header(f"Test Results for {app_name}")
     with col2:
         st.write("")  # Spacing
         st.write("")  # Spacing
-        if st.button("? Re-run Tests"):
+        if st.button("? Re-run Tests", key=f"rerun_{app_name}"):
+            # Clear previous results
             st.session_state.pop(f'test_result_{app_name}', None)
             st.session_state.pop(f'test_output_{app_name}', None)
+            st.rerun()  # Rerun the app
 
     # Check if we have cached results
     result_key = f'test_result_{app_name}'
     output_key = f'test_output_{app_name}'
 
-    if result_key not in st.session_state or output_key not in st.session_state:
-        with st.spinner("Running tests..."):
-            runner = TestRunner()
-            passed, output = runner.run_tests_for_app(app_name, module_name)
-            st.session_state[result_key] = passed
-            st.session_state[output_key] = output
+    with test_container:
+        if result_key not in st.session_state or output_key not in st.session_state:
+            with st.spinner("Running tests..."):
+                runner = TestRunner()
+                passed, output = runner.run_tests_for_app(app_name, module_name)
+                st.session_state[result_key] = passed
+                st.session_state[output_key] = output
 
-    # Display results
-    if st.session_state[result_key]:
-        st.success("? All tests passed!")
-    else:
-        st.error("? Some tests failed!")
+        # Display results
+        if st.session_state[result_key]:
+            st.success("? All tests passed!")
+        else:
+            st.error("? Some tests failed!")
 
-    # Show test output in expandable section
-    with st.expander("Test Details", expanded=not st.session_state[result_key]):
-        st.code(st.session_state[output_key], language='bash')
-
-    # Add separator
-    st.markdown("---")
-
+        # Show test output in expandable section
+        with st.expander("Test Details", expanded=not st.session_state[result_key]):
+            st.code(st.session_state[output_key], language='bash')
 
 def main():
     st.set_page_config(
@@ -149,22 +151,35 @@ def main():
         layout="wide"
     )
 
+    # Initialize session state for selected app
+    if 'selected_app' not in st.session_state:
+        st.session_state.selected_app = list(PAGES.keys())[0]
+
     st.sidebar.title("Navigation")
-    selection = st.sidebar.radio("Go to", list(PAGES.keys()))
+
+    # When selection changes, clear test results for new app
+    new_selection = st.sidebar.radio("Go to", list(PAGES.keys()), key='app_selection')
+    if new_selection != st.session_state.selected_app:
+        result_key = f'test_result_{new_selection}'
+        output_key = f'test_output_{new_selection}'
+        st.session_state.pop(result_key, None)
+        st.session_state.pop(output_key, None)
+        st.session_state.selected_app = new_selection
+        st.rerun()
 
     # Get the selected page and module name
-    module_name, page = PAGES[selection]
+    module_name, page = PAGES[st.session_state.selected_app]
 
     # Run tests for selected app
-    run_app_tests(selection, module_name)
+    run_app_tests(st.session_state.selected_app, module_name)
 
     # Only load page if its tests passed
-    result_key = f'test_result_{selection}'
+    result_key = f'test_result_{st.session_state.selected_app}'
     if st.session_state.get(result_key, True):
-        with st.spinner(f"Loading {selection} ..."):
+        with st.spinner(f"Loading {st.session_state.selected_app} ..."):
             page.main()
     else:
-        st.error(f"Cannot load {selection} due to failed tests.")
+        st.error(f"Cannot load {st.session_state.selected_app} due to failed tests.")
         st.warning("Please fix the failing tests before using this app.")
 
 if __name__ == "__main__":

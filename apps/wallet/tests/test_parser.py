@@ -6,7 +6,7 @@ from parser import TransactionParser, Amount, Transaction, DailyTransactions
 def test_amount_parsing():
     assert Amount.from_string("PLN 100.00") == Amount(Decimal("100.00"), "PLN")
     assert Amount.from_string("-PLN 40.92") == Amount(Decimal("-40.92"), "PLN")
-    
+
     with pytest.raises(ValueError):
         Amount.from_string("Invalid")
         
