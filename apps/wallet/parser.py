@@ -9,7 +9,7 @@ from enum import Enum
 class Amount:
     value: Decimal
     currency: str
-    
+
     @classmethod
     def from_string(cls, amount_str: str) -> 'Amount':
         """Parse amount string like '-PLN 40.92' or 'PLN 100.00'"""
@@ -18,7 +18,7 @@ class Amount:
             raise ValueError(f"Invalid amount format: {amount_str}")
         sign, currency, value = match.groups()
         return cls(
-            value=Decimal('-' + value if sign else value),
+            value=Decimal(f"{'-' if sign else ''}{value}"),
             currency=currency
         )
 
@@ -42,67 +42,64 @@ class TransactionParser:
     def parse(self, text: str) -> List[DailyTransactions]:
         result = []
         current_day = None
+        current_balance = None
         current_transactions = []
-        running_balance = None
         
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         i = 0
         
         while i < len(lines):
+            line = lines[i]
+            
+            # Try parse as date
             try:
-                # Try to parse as date
-                current_date = self.parse_date(lines[i])
-                
-                # Save previous day if exists
+                date = self.parse_date(line)
                 if current_day:
                     result.append(DailyTransactions(
                         date=current_day,
-                        running_balance=running_balance,
+                        running_balance=current_balance,
                         transactions=current_transactions
                     ))
-                
-                current_day = current_date
+                current_day = date
+                current_balance = None
                 current_transactions = []
-                running_balance = None
                 i += 1
-                
-                # Check for running balance
-                if i < len(lines) and 'PLN' in lines[i]:
-                    running_balance = Amount.from_string(lines[i])
-                    i += 1
-                
                 continue
-                
             except ValueError:
                 pass
             
-            # Skip category and account lines
-            while i < len(lines) and not lines[i].startswith('PLN') and not lines[i].startswith('-PLN'):
-                i += 1
-                
-            if i + 2 >= len(lines):
-                break
-                
-            # Parse transaction
-            amount = Amount.from_string(lines[i])
-            merchant_name = lines[i-2]
-            merchant_desc = lines[i-1]
+            # Try parse as running balance
+            try:
+                if current_day and not current_balance:
+                    current_balance = Amount.from_string(line)
+                    i += 1
+                    continue
+            except ValueError:
+                pass
             
-            current_transactions.append(Transaction(
-                merchant_name=merchant_name,
-                merchant_description=merchant_desc,
-                amount=amount
-            ))
+            # Try parse transaction (need at least 3 lines)
+            if i + 2 < len(lines):
+                try:
+                    amount = Amount.from_string(lines[i + 2])
+                    transaction = Transaction(
+                        merchant_name=lines[i],
+                        merchant_description=lines[i + 1],
+                        amount=amount
+                    )
+                    current_transactions.append(transaction)
+                    i += 3
+                    continue
+                except ValueError:
+                    pass
             
             i += 1
-            
+        
         # Don't forget last day
-        if current_day and current_transactions:
+        if current_day:
             result.append(DailyTransactions(
                 date=current_day,
-                running_balance=running_balance,
+                running_balance=current_balance,
                 transactions=current_transactions
             ))
             
         return result
-
