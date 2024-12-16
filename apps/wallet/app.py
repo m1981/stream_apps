@@ -1,18 +1,22 @@
 import streamlit as st
 import pandas as pd
 from io import StringIO
-import tempfile
+from decimal import Decimal
+from datetime import datetime
 
-# Import our previous classes (TransactionParser and TransactionExporter)
-# Assuming they are in files transaction_parser.py and transaction_exporter.py
+from dataclasses import dataclass
+from typing import List, Optional
+import io
+
+# Assuming we're using the classes we created earlier
 from .parser import TransactionParser
-from .formatter import TransactionExporter
+from .exporter import TransactionCsvExporter
 
 def main():
     st.title("Transaction Format Converter")
     st.write("Convert Revolut transactions to CSV format")
 
-    # File upload
+    # File upload - note we're changing to text file since our parser expects text
     uploaded_file = st.file_uploader("Upload your Revolut transaction file (csv)", type="csv")
     
     if uploaded_file is not None:
@@ -20,13 +24,17 @@ def main():
             # Read the uploaded file
             input_text = uploaded_file.getvalue().decode('utf-8')
             
-            # Parse transactions
+            # Parse transactions using our parser
             parser = TransactionParser()
-            transactions = parser.parse(input_text)
+            daily_transactions = parser.parse(input_text)
             
-            # Convert to CSV
-            exporter = TransactionExporter()
-            csv_content = exporter.export_to_csv(transactions)
+            # Convert to CSV using our exporter
+            output = io.StringIO()
+            exporter = TransactionCsvExporter()
+            exporter.export_to_csv(daily_transactions, output)
+            
+            # Get CSV content
+            csv_content = output.getvalue()
             
             # Create download button
             st.download_button(
@@ -43,8 +51,8 @@ def main():
             
             # Show statistics
             st.subheader("Transaction Statistics:")
-            total_inflow = preview_df['Inflow'].sum()
-            total_outflow = preview_df['Outflow'].sum()
+            total_inflow = preview_df['Inflow'].fillna(0).sum()
+            total_outflow = preview_df['Outflow'].fillna(0).sum()
             
             col1, col2 = st.columns(2)
             with col1:
@@ -53,6 +61,17 @@ def main():
                 st.metric("Total Expenses", f"PLN {total_outflow:.2f}")
             
             st.metric("Net Flow", f"PLN {(total_inflow - total_outflow):.2f}")
+
+            # Additional statistics from our parsed data
+            st.subheader("Transaction Details:")
+            total_days = len(daily_transactions)
+            total_transactions = sum(len(day.transactions) for day in daily_transactions)
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                st.metric("Total Days", total_days)
+            with col4:
+                st.metric("Total Transactions", total_transactions)
             
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
