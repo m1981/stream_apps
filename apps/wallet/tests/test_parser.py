@@ -1,11 +1,11 @@
 import unittest
 from decimal import Decimal
 
-from parser import TransactionParser, Amount, Transaction, DailyTransactions
+from parser import TransactionParser1, Amount, Transaction, DailyTransactions
 
 class TestTransactionParser(unittest.TestCase):
     def setUp(self):
-        self.parser = TransactionParser()
+        self.parser = TransactionParser1()
 
     def test_parse_simple_day(self):
         data = """

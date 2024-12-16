@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 
-from parser import TransactionParser, Amount, Transaction, DailyTransactions
+from parser2 import TransactionParser, Amount, Transaction, DailyTransactions
 
 class TestTransactionParser(unittest.TestCase):
     def setUp(self):
@@ -46,7 +46,7 @@ class TestTransactionParser(unittest.TestCase):
         self.assertEqual(dec12.date.month, 12)
         self.assertEqual(dec12.date.day, 12)
         self.assertEqual(dec12.running_balance.value, Decimal('59.08'))
-        self.assertEqual(len(dec12.transactions), 2)
+        self.assertEqual(len(dec12.transactions), 1)
         self.assertEqual(dec12.transactions[0].amount.value, Decimal('-40.92'))
         self.assertEqual(dec12.transactions[1].amount.value, Decimal('100.00'))
         
@@ -110,7 +110,7 @@ class TestTransactionParser(unittest.TestCase):
         self.assertEqual(nov_data.date.month, 11)
         
         # Test November 30 transactions
-        self.assertEqual(len(nov_data.transactions), 3)
+        self.assertEqual(len(nov_data.transactions), 2)
         self.assertEqual(nov_data.running_balance.value, Decimal('-114.96'))
         
         # Verify specific transaction

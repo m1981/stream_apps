@@ -34,7 +34,7 @@ class DailyTransactions:
     running_balance: Optional[Amount]
     transactions: List[Transaction]
 
-class TransactionParser:
+class TransactionParser1:
     @staticmethod
     def parse_date(date_str: str) -> datetime:
         return datetime.strptime(date_str, "%B %d")

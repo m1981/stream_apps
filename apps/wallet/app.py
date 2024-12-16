@@ -9,7 +9,7 @@ from typing import List, Optional
 import io
 
 # Assuming we're using the classes we created earlier
-from .parser import TransactionParser
+from .parser2 import TransactionParser
 from .exporter import TransactionCsvExporter
 
 def main():
