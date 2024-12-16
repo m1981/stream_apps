@@ -1,7 +1,7 @@
 import pytest
 from decimal import Decimal
 
-from  TransactionParser
+from parser import TransactionParser, Amount, Transaction, DailyTransactions
 
 def test_amount_parsing():
     assert Amount.from_string("PLN 100.00") == Amount(Decimal("100.00"), "PLN")
