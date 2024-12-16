@@ -28,7 +28,6 @@ PAGES = {
 class TestRunner:
     def run_tests_for_app(self, app_name: str, module_name: str) -> Tuple[bool, str]:
         """Run tests for specific app"""
-        # Get absolute paths
         app_path = Path(f"apps/{module_name}").absolute()
         app_test_path = app_path / "tests"
 
@@ -36,55 +35,89 @@ class TestRunner:
             return True, "No tests directory found"
 
         try:
-            # Find all test files
             test_files = list(app_test_path.glob("test_*.py"))
-            test_files.extend(app_test_path.glob("**/test_*.py"))  # Include subdirectories
+            test_files.extend(app_test_path.glob("**/test_*.py"))
 
             if not test_files:
                 return True, f"No test files found in {app_test_path}"
 
-            # Convert test files to strings
             test_files_str = " ".join(str(f) for f in test_files)
-
-            # Prepare environment with correct PYTHONPATH
             env = os.environ.copy()
 
-            # Add project root and app directory to PYTHONPATH
             project_root = Path(__file__).parent.absolute()
             python_path = [
-                str(project_root),  # Project root
-                str(app_path),      # App directory
-                str(app_path.parent)  # apps directory
+                str(project_root),
+                str(app_path),
+                str(app_path.parent)
             ]
 
-            # Append to existing PYTHONPATH if it exists
             if 'PYTHONPATH' in env:
                 python_path.append(env['PYTHONPATH'])
 
             env['PYTHONPATH'] = os.pathsep.join(python_path)
 
-            # Run pytest with explicit test files
-            process = subprocess.Popen(
-                [
+            # Create temporary pytest configuration file
+            pytest_ini_content = """
+[pytest]
+log_cli = true
+log_cli_level = DEBUG
+log_cli_format = %(levelname)s: %(message)s
+addopts = -s -v
+"""
+            pytest_ini = project_root / "pytest.ini"
+            pytest_ini.write_text(pytest_ini_content)
+
+            try:
+                # Run pytest with output capturing
+                cmd = [
                     sys.executable,
                     "-m",
                     "pytest",
-                    *test_files_str.split(),  # Pass test files explicitly
+                    *test_files_str.split(),
                     "-v",
+                    "--capture=tee-sys",  # This captures output while still showing it
+                    "--show-capture=all",  # Show all captured output
+                    "-s",  # Don't capture stdout
                     "--import-mode=importlib",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env,
-                cwd=str(project_root)
-            )
+                ]
 
-            stdout, stderr = process.communicate()
-            output = stdout + stderr
+                # Use Popen with PIPE for both stdout and stderr
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                    cwd=str(project_root),
+                    bufsize=1,
+                )
 
-            # Debug information
-            debug_info = f"""
+                # Collect output in real-time
+                all_output = []
+                while True:
+                    # Read output line by line
+                    stdout_line = process.stdout.readline()
+                    stderr_line = process.stderr.readline()
+
+                    if stdout_line:
+                        all_output.append(stdout_line)
+                    if stderr_line:
+                        all_output.append(stderr_line)
+
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Get remaining output
+                        stdout, stderr = process.communicate()
+                        if stdout:
+                            all_output.append(stdout)
+                        if stderr:
+                            all_output.append(stderr)
+                        break
+
+                output = ''.join(all_output)
+                formatted_output = self.format_test_output(output)
+
+                debug_info = f"""
 Test Execution Details:
 ----------------------
 App: {app_name}
@@ -97,12 +130,46 @@ Working Dir: {project_root}
 
 Test Output:
 -----------
-{output}
+{formatted_output}
 """
-            return process.returncode == 0, debug_info
+                return process.returncode == 0, debug_info
+
+            finally:
+                # Clean up temporary pytest.ini
+                pytest_ini.unlink()
 
         except Exception as e:
             return False, f"Error: {str(e)}\nTest path: {app_test_path}"
+
+    @staticmethod
+    def format_test_output(output: str) -> str:
+        """Format the test output for better readability"""
+        lines = output.split('\n')
+        formatted_lines = []
+        for line in lines:
+            line = line.rstrip()
+            if not line:
+                continue
+
+            # Categorize and format different types of output
+            if line.startswith('DEBUG:'):
+                line = f"? {line}"
+            elif line.startswith(('===', 'collecting', 'running')):
+                line = f"?? {line}"
+            elif 'PASSED' in line:
+                line = f"? {line}"
+            elif 'FAILED' in line:
+                line = f"? {line}"
+            elif 'SKIPPED' in line:
+                line = f"?? {line}"
+            elif not any(x in line for x in ['===', 'collecting', 'PASSED', 'FAILED', 'SKIPPED', 'pytest']):
+                # This should catch print statements and other output
+                line = f"? {line}"
+
+            formatted_lines.append(line)
+
+        return '\n'.join(formatted_lines)
+
 
 
 def run_app_tests(app_name: str, module_name: str) -> None:
