@@ -14,8 +14,10 @@ from apps.json_merge import app as json_merge
 from apps.chat1 import app as chat1
 from apps.ynab import app as ynab
 from apps.wallet import app as wallet
+from apps.todo import app as todo
 
 PAGES = {
+    "Todo": ("todo", todo),
     "Wallet 2 YNAB": ("wallet", wallet),
     "YNAB converter": ("ynab", ynab),
     "Chat": ("chat1", chat1),
