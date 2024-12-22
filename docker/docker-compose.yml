@@ -1,0 +1,12 @@
+services:
+  app:
+    build:
+      context: .
+#    image: ${TESTS_IMAGE:?err}
+    ports:
+      - "8501:8501"
+    environment:
+      - OPENAI_API_KEY
+    volumes:
+      - ../:/app
+    command: streamlit run /app/app.py
