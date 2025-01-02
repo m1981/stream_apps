@@ -15,55 +15,68 @@ class Transaction:
     amount: str
 
 def parse_transactions(data):
-    # Split the input data by lines and remove empty lines
     lines = [line.strip() for line in data.strip().split('\n') if line.strip()]
 
-    # Initialize variables
     transactions = []
     current_transaction = None
     current_date = None
 
-    # Regular expressions
     date_pattern = re.compile(r'^[A-Za-z]+\s+\d+$')
-    amount_pattern = re.compile(r'([-+]?PLN\s*[\d,\.]+)')
+    amount_pattern = re.compile(r'^([+-]?PLN\s*[\d,\.]+)$')
     revolut_pattern = re.compile(r'.*Revolut.*PLN')
 
-    for i, line in enumerate(lines):
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
         # Check for date
         if date_pattern.match(line):
             current_date = line
+            i += 1
             continue
 
         # Start new transaction when Revolut line is found
         if revolut_pattern.match(line):
-            if current_transaction is not None:
-                transactions.append(current_transaction)
-
             # Get the category from the previous line
-            # Make sure we don't go out of bounds
             category = lines[i - 1] if i > 0 else None
 
             current_transaction = Transaction(
-                date=current_date,
+                date=current_date,  # Use stored date
                 category=category,
                 method=line,
                 merchant=None,
                 amount=None
             )
+            i += 1
 
-        # Check for amount - this completes a transaction
-        elif amount_pattern.search(line) and current_transaction is not None:
-            current_transaction.amount = amount_pattern.search(line).group(0)
+            # Get merchant name (first instance)
+            if i < len(lines):
+                current_transaction.merchant = lines[i]
+                i += 1
+
+                # Skip duplicate merchant line if exists
+                if i < len(lines) and lines[i] == current_transaction.merchant:
+                    i += 1
+
+            continue
+
+        # Check for amount
+        if amount_pattern.match(line) and current_transaction is not None:
+            current_transaction.amount = line
             transactions.append(current_transaction)
             current_transaction = None
 
-        # If we have a current transaction and no amount pattern, it must be merchant name
-        elif current_transaction is not None and not current_transaction.merchant:
-            current_transaction.merchant = line
+        i += 1
 
-    # Add the last transaction if exists
-    if current_transaction is not None and current_transaction.amount is not None:
-        transactions.append(current_transaction)
+    # Debug print for verification
+    print("\nParsed Transactions:")
+    for t in transactions:
+        print(f"Date: {t.date}")
+        print(f"Category: {t.category}")
+        print(f"Method: {t.method}")
+        print(f"Merchant: {t.merchant}")
+        print(f"Amount: {t.amount}")
+        print("---")
 
     return transactions
 
