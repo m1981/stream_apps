@@ -1,40 +1,111 @@
 import streamlit as st
 import pandas as pd
 from io import StringIO
-from decimal import Decimal
-from datetime import datetime
-
+import re
 from dataclasses import dataclass
-from typing import List, Optional
-import io
+from typing import List
+import csv
 
-# Assuming we're using the classes we created earlier
-from .parser2 import TransactionParser
-from .exporter import TransactionCsvExporter
+@dataclass
+class Transaction:
+    date: str
+    category: str
+    method: str
+    merchant: str
+    amount: str
+
+def parse_transactions(data):
+    # Split the input data by lines and remove empty lines
+    lines = [line.strip() for line in data.strip().split('\n') if line.strip()]
+
+    # Initialize variables
+    transactions = []
+    current_transaction = None
+    current_date = None
+
+    # Regular expressions
+    date_pattern = re.compile(r'^[A-Za-z]+\s+\d+$')
+    amount_pattern = re.compile(r'([-+]?PLN\s*[\d,\.]+)')
+    revolut_pattern = re.compile(r'.*Revolut.*PLN')
+
+    for i, line in enumerate(lines):
+        # Check for date
+        if date_pattern.match(line):
+            current_date = line
+            continue
+
+        # Start new transaction when Revolut line is found
+        if revolut_pattern.match(line):
+            if current_transaction is not None:
+                transactions.append(current_transaction)
+
+            # Get the category from the previous line
+            # Make sure we don't go out of bounds
+            category = lines[i - 1] if i > 0 else None
+
+            current_transaction = Transaction(
+                date=current_date,
+                category=category,
+                method=line,
+                merchant=None,
+                amount=None
+            )
+
+        # Check for amount - this completes a transaction
+        elif amount_pattern.search(line) and current_transaction is not None:
+            current_transaction.amount = amount_pattern.search(line).group(0)
+            transactions.append(current_transaction)
+            current_transaction = None
+
+        # If we have a current transaction and no amount pattern, it must be merchant name
+        elif current_transaction is not None and not current_transaction.merchant:
+            current_transaction.merchant = line
+
+    # Add the last transaction if exists
+    if current_transaction is not None and current_transaction.amount is not None:
+        transactions.append(current_transaction)
+
+    return transactions
+
+
+def convert_to_dataframe(transactions):
+    data = {
+        'Date': [],
+        'Category': [],
+        'Method': [],
+        'Merchant': [],
+        'Amount': []
+    }
+    
+    for trans in transactions:
+        data['Date'].append(trans.date)
+        data['Category'].append(trans.category)
+        data['Method'].append(trans.method)
+        data['Merchant'].append(trans.merchant)
+        data['Amount'].append(trans.amount)
+    
+    return pd.DataFrame(data)
 
 def main():
     st.title("Transaction Format Converter")
     st.write("Convert Revolut transactions to CSV format")
 
-    # File upload - note we're changing to text file since our parser expects text
-    uploaded_file = st.file_uploader("Upload your Revolut transaction file (csv)", type="csv")
+    # File upload
+    uploaded_file = st.file_uploader("Upload your Revolut transaction file", type=["txt", "csv"])
     
     if uploaded_file is not None:
         try:
             # Read the uploaded file
             input_text = uploaded_file.getvalue().decode('utf-8')
             
-            # Parse transactions using our parser
-            parser = TransactionParser()
-            daily_transactions = parser.parse(input_text)
+            # Parse transactions
+            transactions = parse_transactions(input_text)
             
-            # Convert to CSV using our exporter
-            output = io.StringIO()
-            exporter = TransactionCsvExporter()
-            exporter.export_to_csv(daily_transactions, output)
+            # Convert to DataFrame
+            df = convert_to_dataframe(transactions)
             
-            # Get CSV content
-            csv_content = output.getvalue()
+            # Create CSV content
+            csv_content = df.to_csv(index=False)
             
             # Create download button
             st.download_button(
@@ -46,33 +117,30 @@ def main():
             
             # Show preview
             st.subheader("Preview of converted data:")
-            preview_df = pd.read_csv(StringIO(csv_content))
-            st.dataframe(preview_df)
-            
-            # Show statistics
-            st.subheader("Transaction Statistics:")
-            total_inflow = preview_df['Inflow'].fillna(0).sum()
-            total_outflow = preview_df['Outflow'].fillna(0).sum()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total Income", f"PLN {total_inflow:.2f}")
-            with col2:
-                st.metric("Total Expenses", f"PLN {total_outflow:.2f}")
-            
-            st.metric("Net Flow", f"PLN {(total_inflow - total_outflow):.2f}")
+            st.dataframe(df)
 
-            # Additional statistics from our parsed data
+            # Additional statistics
             st.subheader("Transaction Details:")
-            total_days = len(daily_transactions)
-            total_transactions = sum(len(day.transactions) for day in daily_transactions)
+            st.write(f"Total transactions: {len(transactions)}")
             
-            col3, col4 = st.columns(2)
-            with col3:
-                st.metric("Total Days", total_days)
-            with col4:
-                st.metric("Total Transactions", total_transactions)
-            
+            # Show some basic statistics
+            if len(transactions) > 0:
+                # Convert amounts to numeric values for calculations
+                amounts = pd.to_numeric(
+                    df['Amount'].str.replace('PLN', '')
+                    .str.replace(',', '')
+                    .str.strip(), 
+                    errors='coerce'
+                )
+                
+                st.write(f"Total amount: PLN {abs(amounts.sum()):.2f}")
+                st.write(f"Average transaction amount: PLN {abs(amounts.mean()):.2f}")
+                
+                # Show transactions by category
+                st.subheader("Transactions by Category:")
+                category_counts = df['Category'].value_counts()
+                st.bar_chart(category_counts)
+
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
             st.exception(e)
