@@ -31,4 +31,4 @@ precision = 2
 [html]
 # More readable styling for HTML report
 show_contexts = True
-title = Todo App Coverage Report
+title = Coverage Report
