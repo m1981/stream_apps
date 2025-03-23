@@ -1,4 +1,4 @@
-# Specification: Task Scheduling System: Todoist to Google Calendar Integration
+# Specification (REF_SP): Task Scheduling System: Todoist to Google Calendar Integration
 
 ## Overview
 This system is designed to bridge the gap between task management (Todoist) and time management (Google Calendar) by intelligently scheduling tasks into appropriate time blocks while respecting existing commitments. The core purpose is to transform a list of tasks into a realistic, time-blocked schedule that optimizes productivity through strategic time allocation.
@@ -136,7 +136,7 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
 
 
 
-# Implementation
+# Implementation Plan (REF_IP)
 
 1. Implementation (Start with the simplest useful behavior)
 
