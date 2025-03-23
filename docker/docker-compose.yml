@@ -1,8 +1,8 @@
 services:
   app:
     build:
-      context: .
-#    image: ${TESTS_IMAGE:?err}
+      context: ..
+      dockerfile: docker/Dockerfile
     ports:
       - "8501:8501"
     environment:
@@ -10,3 +10,14 @@ services:
     volumes:
       - ../:/app
     command: streamlit run /app/app.py
+
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: testing
+    volumes:
+      - ../:/app
+    environment:
+      - PYTHONPATH=/app/apps/todo
+    command: ptw apps/todo/tests/ -- -v
