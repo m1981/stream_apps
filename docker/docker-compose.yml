@@ -20,4 +20,8 @@ services:
       - ../:/app
     environment:
       - PYTHONPATH=/app/apps/todo
-    command: ptw apps/todo/tests/ -- -v
+    command: >
+      sh -c "cd apps/todo &&
+      coverage run -m pytest tests/ &&
+      coverage report -m &&
+      coverage html"
