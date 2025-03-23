@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import List, Protocol
+from datetime import datetime
+
+from .task import Task
+from .timeblock import Event, TimeBlockZone
 
 class TaskRepository(Protocol):
     def get_tasks(self) -> List[Task]:
@@ -37,4 +41,5 @@ class Scheduler:
     
     def schedule_tasks(self, planning_horizon: int) -> None:
         """Main scheduling orchestration"""
-        # Implementation here
+        # Implementation here...
+        pass
