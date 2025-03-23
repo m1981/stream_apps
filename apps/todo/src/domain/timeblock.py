@@ -5,6 +5,33 @@ from typing import List, Optional
 
 from .task import ZoneType, EnergyLevel
 
+"""
+Time block management for task scheduling.
+
+Domain Context:
+- Represents schedulable time periods
+- Defines work zones with specific characteristics
+- Manages existing calendar events
+- Handles buffer time requirements
+
+Business Rules:
+- Zones have specific energy levels and constraints
+- Minimum duration requirements per zone type
+- Buffer time must be maintained between blocks
+- Fixed events cannot be modified
+
+Architecture:
+- TimeBlock is base class for all time periods
+- TimeBlockZone adds zone-specific constraints
+- Event represents calendar entries
+- Immutable design for time block properties
+
+System Constraints:
+- Time blocks cannot overlap
+- Zones must have minimum duration
+- Events must fit within block boundaries
+"""
+
 class TimeBlockType(Enum):
     FIXED = "fixed"
     MANAGED = "managed"

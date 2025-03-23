@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 from src.domain.scheduling import ConflictDetector, SchedulingConflict
-from src.domain.timeblock import TimeBlockZone, Event, TimeBlockType
+from src.domain.timeblock import TimeBlock, TimeBlockZone, TimeBlockType, Event
 from src.domain.task import Task, TaskConstraints, ZoneType, EnergyLevel
 from src.domain.scheduler import Scheduler, SchedulingStrategy
 from typing import List
@@ -321,6 +321,180 @@ class TestConflictDetection:
         # Assert
         assert conflict is not None
         assert conflict.message == f"Task duration below zone minimum (120 min)"
+
+    def test_find_available_slot_scanning_behavior(self):
+        """
+        Tests how find_available_slot scans through time in 15-minute increments
+        until finding an open slot or reaching the end
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)  # 9 AM
+        end_time = start_time + timedelta(hours=8)  # 5 PM
+        
+        # Create a time block with two meetings:
+        # 1. 9:00 AM - 10:00 AM
+        # 2. 10:15 AM - 11:00 AM
+        time_block = TimeBlockZone(
+            start=start_time,
+            end=end_time,
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[
+                Event(
+                    id="meeting1",
+                    start=start_time,
+                    end=start_time + timedelta(hours=1),
+                    title="Morning Meeting",
+                    type=TimeBlockType.FIXED
+                ),
+                Event(
+                    id="meeting2",
+                    start=start_time + timedelta(hours=1, minutes=15),
+                    end=start_time + timedelta(hours=2),
+                    title="Team Sync",
+                    type=TimeBlockType.FIXED
+                )
+            ]
+        )
+        
+        # 30-minute task that needs scheduling
+        task = Task(
+            id="quick_task",
+            title="Quick Task",
+            duration=30,
+            due_date=end_time,
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+        
+        # Act
+        available_slot = ConflictDetector.find_available_slot(
+            task,
+            time_block,
+            start_time
+        )
+        
+        # Assert
+        expected_slot = start_time + timedelta(hours=2, minutes=15)  # 11:15 AM
+        assert available_slot == expected_slot
+        
+        # Verify this is actually the first available slot
+        # by checking earlier times have conflicts
+        earlier_slot = expected_slot - timedelta(minutes=15)
+        assert ConflictDetector.find_conflicts(task, earlier_slot, time_block) is not None
+
+    def test_no_available_slot_found(self):
+        """
+        Tests that find_available_slot returns None when no suitable slot exists
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        end_time = start_time + timedelta(hours=2)  # Short time block
+        
+        # Create a fully booked time block with back-to-back meetings
+        time_block = TimeBlockZone(
+            start=start_time,
+            end=end_time,
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[
+                Event(
+                    id="meeting1",
+                    start=start_time,
+                    end=start_time + timedelta(hours=1),
+                    title="Meeting 1",
+                    type=TimeBlockType.FIXED
+                ),
+                Event(
+                    id="meeting2",
+                    start=start_time + timedelta(hours=1),
+                    end=end_time,
+                    title="Meeting 2",
+                    type=TimeBlockType.FIXED
+                )
+            ]
+        )
+        
+        task = Task(
+            id="task1",
+            title="No Room For This",
+            duration=60,
+            due_date=end_time,
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+        
+        # Act
+        available_slot = ConflictDetector.find_available_slot(
+            task,
+            time_block,
+            start_time
+        )
+        
+        # Assert
+        assert available_slot is None
+
+    def test_regular_timeblock_ignores_zone_constraints(self):
+        """
+        Tests that regular TimeBlock doesn't check zone-specific constraints
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        
+        # Create a regular TimeBlock (not TimeBlockZone)
+        regular_block = TimeBlock(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            type=TimeBlockType.MANAGED,
+            events=[]
+        )
+        
+        # Task with zone constraints that would fail in a TimeBlockZone
+        task = Task(
+            id="task1",
+            title="Short Task",
+            duration=15,  # Would be too short for deep work zone
+            due_date=start_time + timedelta(hours=4),
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(task, start_time, regular_block)
+        
+        # Assert
+        assert conflict is None  # Should pass despite zone constraints
 
 class TestPriorityScheduling:
     @pytest.fixture

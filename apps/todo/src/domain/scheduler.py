@@ -5,6 +5,34 @@ from datetime import datetime, timedelta
 from .task import Task
 from .timeblock import Event, TimeBlockZone, ZoneType, EnergyLevel
 
+"""
+Task scheduling orchestration and strategy implementation.
+
+Domain Context:
+- Coordinates task scheduling within planning horizon
+- Manages interaction between tasks and calendar
+- Implements different scheduling strategies
+- Handles task repository and calendar integration
+
+Business Rules:
+- Tasks are scheduled within defined planning horizon
+- Higher priority tasks get preferred slots
+- Dependencies must be respected
+- Zone matching rules must be followed
+- Buffer times must be maintained
+
+Architecture:
+- SchedulingStrategy defines scheduling algorithm interface
+- TaskRepository abstracts task storage
+- CalendarRepository abstracts calendar operations
+- Scheduler orchestrates the entire process
+
+System Constraints:
+- Planning horizon typically 7-28 days
+- Must handle both fixed and managed events
+- Must support rescheduling of existing tasks
+"""
+
 class TaskRepository(Protocol):
     def get_tasks(self) -> List[Task]:
         pass
