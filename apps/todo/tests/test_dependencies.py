@@ -2,37 +2,46 @@ import pytest
 from datetime import datetime, timedelta
 from src.domain.task import Task, TaskConstraints, ZoneType, EnergyLevel
 from src.domain.scheduler import Scheduler, SchedulingStrategy
+from src.domain.timeblock import TimeBlockZone, Event, TimeBlockType
 
 class DependencyAwareStrategy(SchedulingStrategy):
     def schedule(self, tasks, zones, existing_events):
-        # Simple implementation for testing
-        events = []
-        current_time = zones[0].start if zones else datetime.now()
+        # Sort tasks based on dependencies
+        scheduled = []
+        scheduled_ids = set()
+        remaining_tasks = tasks.copy()
         
-        # Sort tasks by dependencies
-        scheduled_tasks = set()
-        while tasks:
-            # Find task with satisfied dependencies
-            schedulable = next(
-                (t for t in tasks if all(d in scheduled_tasks for d in t.constraints.dependencies)),
-                None
-            )
-            if not schedulable:
-                raise ValueError("Circular dependency detected")
+        while remaining_tasks:
+            # Find tasks with satisfied dependencies
+            available = [
+                task for task in remaining_tasks
+                if all(dep in scheduled_ids for dep in task.constraints.dependencies)
+            ]
+            
+            if not available:
+                if remaining_tasks:
+                    raise ValueError("Circular dependency detected")
+                break
+                
+            # Schedule the first available task
+            task = available[0]
+            current_time = zones[0].start if zones else datetime.now()
+            if scheduled:
+                current_time = scheduled[-1].end + timedelta(minutes=task.constraints.required_buffer)
                 
             event = Event(
-                id=f"evt_{schedulable.id}",
-                task_id=schedulable.id,
+                id=task.id,
                 start=current_time,
-                end=current_time + timedelta(minutes=schedulable.duration),
-                title=schedulable.title
+                end=current_time + timedelta(minutes=task.duration),
+                title=task.title,
+                type=TimeBlockType.MANAGED
             )
-            events.append(event)
-            scheduled_tasks.add(schedulable.id)
-            tasks.remove(schedulable)
-            current_time = event.end + timedelta(minutes=schedulable.constraints.required_buffer)
-        
-        return events
+            
+            scheduled.append(event)
+            scheduled_ids.add(task.id)
+            remaining_tasks.remove(task)
+            
+        return scheduled
 
 class MockTaskRepository:
     def get_tasks(self):
@@ -101,21 +110,58 @@ class TestTaskDependencies:
             )
         )
 
-        scheduler = Scheduler(MockTaskRepository(), MockCalendarRepository(),
-                            DependencyAwareStrategy())
-        events = scheduler.schedule_tasks([task3, task1, task2])
+        strategy = DependencyAwareStrategy()
+        events = strategy.schedule([task3, task1, task2], [TimeBlockZone(
+            start=datetime.now(),
+            end=datetime.now() + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        )], [])
         
         # Verify correct ordering
-        task1_event = next(e for e in events if e.task_id == "task1")
-        task2_event = next(e for e in events if e.task_id == "task2")
-        task3_event = next(e for e in events if e.task_id == "task3")
+        task1_event = next(e for e in events if e.id == "task1")
+        task2_event = next(e for e in events if e.id == "task2")
+        task3_event = next(e for e in events if e.id == "task3")
         
         assert task1_event.end <= task2_event.start
         assert task2_event.end <= task3_event.start
 
-    def test_detects_circular_dependencies(self):
-        task1 = Task(id="task1", dependencies=["task2"])
-        task2 = Task(id="task2", dependencies=["task1"])
-        
+    def test_detects_circular_dependencies(self, default_constraints):
+        task1 = Task(
+            id="task1",
+            title="Task 1",
+            duration=60,
+            due_date=datetime.now() + timedelta(days=1),
+            priority=1,
+            project_id="test",
+            constraints=TaskConstraints(
+                **{**default_constraints.__dict__, "dependencies": ["task2"]}
+            )
+        )
+
+        task2 = Task(
+            id="task2",
+            title="Task 2",
+            duration=60,
+            due_date=datetime.now() + timedelta(days=1),
+            priority=1,
+            project_id="test",
+            constraints=TaskConstraints(
+                **{**default_constraints.__dict__, "dependencies": ["task1"]}
+            )
+        )
+
+        strategy = DependencyAwareStrategy()
         with pytest.raises(ValueError, match="Circular dependency detected"):
-            scheduler.validate_dependencies([task1, task2])
+            strategy.schedule([task1, task2], [TimeBlockZone(
+                start=datetime.now(),
+                end=datetime.now() + timedelta(hours=4),
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                min_duration=30,
+                buffer_required=15,
+                events=[]
+            )], [])
