@@ -125,6 +125,203 @@ class TestConflictDetection:
         assert slot is not None
         assert slot >= deep_work_zone.start
 
+    def test_detects_direct_time_conflict(self, deep_work_task):
+        """
+        Tests that a direct time overlap with an existing event is detected as a conflict
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        zone = TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[
+                Event(
+                    id="existing_event",
+                    start=start_time + timedelta(minutes=30),
+                    end=start_time + timedelta(minutes=90),
+                    title="Existing Meeting",
+                    type=TimeBlockType.FIXED
+                )
+            ]
+        )
+        
+        proposed_start = start_time + timedelta(minutes=60)  # Right in the middle of existing event
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(deep_work_task, proposed_start, zone)
+        
+        # Assert
+        assert conflict is not None
+        assert conflict.task == deep_work_task
+        assert len(conflict.conflicting_events) == 1
+        assert conflict.conflicting_events[0].id == "existing_event"
+        assert conflict.message == "Time slot has conflicting events"
+        assert conflict.proposed_start == proposed_start
+
+    def test_detects_partial_overlap_at_start(self, deep_work_task):
+        """
+        Tests that partial overlap at the start of an existing event is detected as a conflict
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        existing_event = Event(
+            id="existing_event",
+            start=start_time + timedelta(minutes=60),
+            end=start_time + timedelta(minutes=120),
+            title="Existing Meeting",
+            type=TimeBlockType.FIXED
+        )
+        
+        zone = TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[existing_event]
+        )
+        
+        proposed_start = existing_event.start - timedelta(minutes=30)  # Overlaps with start
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(deep_work_task, proposed_start, zone)
+        
+        # Assert
+        assert conflict is not None
+        assert len(conflict.conflicting_events) == 1
+        assert conflict.conflicting_events[0] == existing_event
+
+    def test_detects_partial_overlap_at_end(self, deep_work_task):
+        """
+        Tests that partial overlap at the end of an existing event is detected as a conflict
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        existing_event = Event(
+            id="existing_event",
+            start=start_time + timedelta(minutes=60),
+            end=start_time + timedelta(minutes=120),
+            title="Existing Meeting",
+            type=TimeBlockType.FIXED
+        )
+        
+        zone = TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[existing_event]
+        )
+        
+        proposed_start = existing_event.end - timedelta(minutes=30)  # Overlaps with end
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(deep_work_task, proposed_start, zone)
+        
+        # Assert
+        assert conflict is not None
+        assert len(conflict.conflicting_events) == 1
+        assert conflict.conflicting_events[0] == existing_event
+
+    def test_prevent_high_energy_task_in_low_energy_period(self):
+        """
+        Tests preventing system design work (high energy) 
+        from being scheduled in late afternoon (low energy)
+        """
+        # Arrange
+        late_afternoon = datetime.now().replace(hour=16, minute=0)  # 4 PM
+        low_energy_zone = TimeBlockZone(
+            start=late_afternoon,
+            end=late_afternoon + timedelta(hours=3),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.LOW,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        )
+        
+        system_design_task = Task(
+            id="arch_design",
+            title="System Architecture Design",
+            duration=120,  # 2 hours
+            due_date=datetime.now() + timedelta(days=1),
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,  # Requires high energy
+                is_splittable=False,
+                min_chunk_duration=60,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(
+            system_design_task,
+            low_energy_zone.start,
+            low_energy_zone
+        )
+        
+        # Assert
+        assert conflict is not None
+        assert conflict.message == f"Task requires {EnergyLevel.HIGH.value} energy level"
+
+    def test_prevent_short_task_in_deep_work_block(self):
+        """
+        Tests preventing a quick code review (15 min) 
+        from being scheduled in a deep work block (2 hour minimum)
+        """
+        # Arrange
+        morning = datetime.now().replace(hour=9, minute=0)
+        deep_work_zone = TimeBlockZone(
+            start=morning,
+            end=morning + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=120,  # 2 hour minimum
+            buffer_required=15,
+            events=[]
+        )
+        
+        code_review_task = Task(
+            id="quick_review",
+            title="Quick Code Review",
+            duration=15,  # 15 minutes
+            due_date=datetime.now() + timedelta(days=1),
+            priority=2,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=15,
+                max_split_count=1,
+                required_buffer=5,
+                dependencies=[]
+            )
+        )
+        
+        # Act
+        conflict = ConflictDetector.find_conflicts(
+            code_review_task,
+            deep_work_zone.start,
+            deep_work_zone
+        )
+        
+        # Assert
+        assert conflict is not None
+        assert conflict.message == f"Task duration below zone minimum (120 min)"
+
 class TestPriorityScheduling:
     @pytest.fixture
     def default_constraints(self):
