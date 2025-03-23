@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from .task import Task
 from .timeblock import TimeBlock, TimeBlockZone, Event
@@ -65,7 +65,6 @@ class ConflictDetector:
         time_block: TimeBlock,
         start_from: datetime
     ) -> Optional[datetime]:
-
         current_time = max(start_from, time_block.start)
         end_time = min(task.due_date, time_block.end)
         
