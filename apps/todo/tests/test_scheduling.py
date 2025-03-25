@@ -2,7 +2,8 @@ import dataclasses
 import pytest
 from datetime import datetime, timedelta
 from typing import List
-from src.domain.scheduling import SchedulingStrategy, SequenceBasedStrategy  # Updated import
+from src.domain.scheduling.strategies import SequenceBasedStrategy
+from src.domain.scheduling.base import SchedulingStrategy
 from src.domain.scheduler import Scheduler
 from src.domain.conflict import ConflictDetector
 from src.domain.task import Task, TaskConstraints, EnergyLevel, ZoneType

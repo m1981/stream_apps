@@ -1,9 +1,9 @@
-from abc import ABC, abstractmethod
 from typing import List, Protocol
 from datetime import datetime, timedelta
 
 from .task import Task
 from .timeblock import Event, TimeBlockZone, ZoneType, EnergyLevel
+from .scheduling import SchedulingStrategy
 
 """
 Task scheduling orchestration and strategy implementation.
@@ -48,14 +48,6 @@ class CalendarRepository(Protocol):
         pass
     
     def remove_managed_events(self) -> None:
-        pass
-
-class SchedulingStrategy(ABC):
-    @abstractmethod
-    def schedule(self, 
-                tasks: List[Task],
-                zones: List[TimeBlockZone],
-                existing_events: List[Event]) -> List[Event]:
         pass
 
 class Scheduler:

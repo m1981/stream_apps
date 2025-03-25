@@ -3,7 +3,29 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from .task import Task
-from .scheduling import TimeBlock, TimeBlockZone, Event
+from .timeblock import TimeBlock, TimeBlockZone, Event
+
+"""
+Scheduling conflict detection and resolution system.
+
+Domain Context:
+- Validates task placement in time blocks
+- Detects conflicts with existing events
+- Ensures zone and energy level compatibility
+- Manages buffer requirements between tasks
+
+Business Rules:
+- Tasks can only be scheduled in compatible zones
+- Energy levels must match between task and zone
+- Minimum duration constraints must be respected
+- Buffer time must be maintained between tasks
+- No overlapping with existing events
+
+Architecture:
+- ConflictDetector is a stateless service
+- SchedulingConflict represents validation failures
+- Conflict detection is separate from resolution
+"""
 
 @dataclass
 class SchedulingConflict:
