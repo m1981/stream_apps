@@ -50,63 +50,130 @@ class TestTaskValidation:
 class TestTaskSplitting:
     @pytest.fixture
     def splittable_task(self):
-        constraints = TaskConstraints(
-            zone_type=ZoneType.DEEP,
-            energy_level=EnergyLevel.HIGH,
-            is_splittable=True,
-            min_chunk_duration=30,
-            max_split_count=3,
-            required_buffer=15,
-            dependencies=[]
-        )
         return Task(
             id="task1",
-            title="Splittable Task",
-            duration=120,
+            title="Large Task",
+            duration=240,  # 4 hours
             due_date=datetime.now() + timedelta(days=1),
             priority=1,
             project_id="proj1",
-            constraints=constraints
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=True,
+                min_chunk_duration=60,  # 1 hour minimum
+                max_split_count=4,
+                required_buffer=15,
+                dependencies=[]
+            )
         )
 
-    def test_split_task_into_chunks(self, splittable_task):
-        chunks = splittable_task.split(chunk_sizes=[45, 45, 30])
+    def test_split_equal_chunks(self, splittable_task):
+        """Test splitting task into equal chunks"""
+        chunks = splittable_task.split(chunk_sizes=[60, 60, 60, 60])
+        assert len(chunks) == 4
+        assert all(chunk.duration == 60 for chunk in chunks)
+        assert all(chunk.constraints.is_splittable is False for chunk in chunks)
+
+    def test_split_unequal_chunks(self, splittable_task):
+        """Test splitting task into unequal chunks"""
+        chunks = splittable_task.split(chunk_sizes=[90, 90, 60])
         assert len(chunks) == 3
-        assert all(chunk.duration >= splittable_task.constraints.min_chunk_duration for chunk in chunks)
+        assert [chunk.duration for chunk in chunks] == [90, 90, 60]
         assert sum(chunk.duration for chunk in chunks) == splittable_task.duration
 
-    def test_respects_max_split_count(self, splittable_task):
-        with pytest.raises(ValueError, match="Exceeds maximum split count"):
-            splittable_task.split(chunk_sizes=[30, 30, 30, 30])
-
-    def test_maintains_task_properties_in_chunks(self, splittable_task):
-        chunks = splittable_task.split(chunk_sizes=[60, 60])
-        for chunk in chunks:
+    def test_split_preserves_metadata(self, splittable_task):
+        """Test that split chunks preserve original task metadata"""
+        chunks = splittable_task.split(chunk_sizes=[120, 120])
+        for i, chunk in enumerate(chunks, 1):
+            assert chunk.id == f"{splittable_task.id}_chunk_{i}"
+            assert chunk.title == f"{splittable_task.title} (Part {i}/2)"
+            assert chunk.due_date == splittable_task.due_date
+            assert chunk.priority == splittable_task.priority
+            assert chunk.project_id == splittable_task.project_id
             assert chunk.constraints.zone_type == splittable_task.constraints.zone_type
             assert chunk.constraints.energy_level == splittable_task.constraints.energy_level
-            assert chunk.project_id == splittable_task.project_id
 
-    def test_enforces_minimum_chunk_duration(self, splittable_task):
-        with pytest.raises(ValueError, match="All chunks must be at least"):
-            splittable_task.split(chunk_sizes=[20, 50, 50])
-
-    def test_validates_total_duration(self, splittable_task):
-        with pytest.raises(ValueError, match="Sum of chunk sizes"):
-            splittable_task.split(chunk_sizes=[50, 50, 50])  # Exceeds original duration
-
-    def test_creates_sequential_dependencies(self, splittable_task):
-        chunks = splittable_task.split(chunk_sizes=[40, 40, 40])
-        assert not chunks[0].constraints.dependencies  # First chunk has no dependencies
+    def test_split_creates_dependencies(self, splittable_task):
+        """Test that split chunks have correct dependency chain"""
+        chunks = splittable_task.split(chunk_sizes=[80, 80, 80])
+        assert not chunks[0].constraints.dependencies
         assert chunks[1].constraints.dependencies == [f"{splittable_task.id}_chunk_1"]
         assert chunks[2].constraints.dependencies == [f"{splittable_task.id}_chunk_2"]
 
-    def test_prevents_splitting_non_splittable_task(self, splittable_task):
+    def test_split_validates_chunk_count(self, splittable_task):
+        """Test validation of maximum split count"""
+        with pytest.raises(ValueError, match="Exceeds maximum split count"):
+            splittable_task.split(chunk_sizes=[60, 60, 60, 60, 60])
+
+    def test_split_validates_minimum_duration(self, splittable_task):
+        """Test validation of minimum chunk duration"""
+        with pytest.raises(ValueError, match="All chunks must be at least"):
+            splittable_task.split(chunk_sizes=[45, 45, 150])  # 45 < min_chunk_duration
+
+    def test_split_validates_total_duration(self, splittable_task):
+        """Test validation of total duration"""
+        with pytest.raises(ValueError, match="Sum of chunk sizes"):
+            splittable_task.split(chunk_sizes=[100, 100, 100])  # Sum > original duration
+
+    def test_split_non_splittable_task(self, splittable_task):
+        """Test that non-splittable tasks cannot be split"""
         splittable_task.constraints.is_splittable = False
         with pytest.raises(ValueError, match="Task is not splittable"):
-            splittable_task.split(chunk_sizes=[60, 60])
+            splittable_task.split(chunk_sizes=[120, 120])
 
-    def test_chunks_are_not_splittable(self, splittable_task):
-        chunks = splittable_task.split(chunk_sizes=[60, 60])
-        for chunk in chunks:
-            assert not chunk.constraints.is_splittable
-            assert chunk.constraints.max_split_count == 1
+    def test_split_chunks_inherit_buffer(self, splittable_task):
+        """Test that split chunks inherit buffer requirements"""
+        chunks = splittable_task.split(chunk_sizes=[120, 120])
+        assert all(chunk.constraints.required_buffer == splittable_task.constraints.required_buffer 
+                  for chunk in chunks)
+
+    def test_split_with_existing_dependencies(self):
+        """Test splitting task that has existing dependencies"""
+        task = Task(
+            id="dependent_task",
+            title="Dependent Task",
+            duration=180,
+            due_date=datetime.now() + timedelta(days=1),
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=True,
+                min_chunk_duration=60,
+                max_split_count=3,
+                required_buffer=15,
+                dependencies=["prerequisite_task"]
+            )
+        )
+        
+        chunks = task.split(chunk_sizes=[60, 60, 60])
+        # First chunk should inherit original dependencies
+        assert "prerequisite_task" in chunks[0].constraints.dependencies
+        # Subsequent chunks should depend on previous chunk
+        assert chunks[1].constraints.dependencies == [f"{task.id}_chunk_1"]
+        assert chunks[2].constraints.dependencies == [f"{task.id}_chunk_2"]
+
+    def test_split_validates_zone_minimum_duration(self):
+        """Test splitting respects zone minimum duration"""
+        task = Task(
+            id="zone_restricted_task",
+            title="Zone Restricted Task",
+            duration=180,
+            due_date=datetime.now() + timedelta(days=1),
+            priority=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=True,
+                min_chunk_duration=120,  # Deep work minimum
+                max_split_count=2,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+        
+        with pytest.raises(ValueError, match="All chunks must be at least"):
+            task.split(chunk_sizes=[90, 90])  # Below deep work minimum

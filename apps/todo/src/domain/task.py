@@ -122,6 +122,7 @@ class Task:
         - Sum of chunks must equal original duration
         - Each chunk inherits zone and energy constraints
         - Chunks are sequentially dependent
+        - First chunk inherits original dependencies
         """
         # Validate split parameters
         if len(chunk_sizes) > self.constraints.max_split_count:
@@ -139,6 +140,15 @@ class Task:
         # Create chunks
         chunks = []
         for i, size in enumerate(chunk_sizes, 1):
+            # Set up dependencies for this chunk
+            chunk_dependencies = []
+            if i == 1:
+                # First chunk inherits original task's dependencies
+                chunk_dependencies = self.constraints.dependencies.copy()
+            else:
+                # Other chunks depend on the previous chunk
+                chunk_dependencies = [f"{self.id}_chunk_{i-1}"]
+
             chunk = Task(
                 id=f"{self.id}_chunk_{i}",
                 title=f"{self.title} (Part {i}/{len(chunk_sizes)})",
@@ -153,7 +163,7 @@ class Task:
                     min_chunk_duration=self.constraints.min_chunk_duration,
                     max_split_count=1,
                     required_buffer=self.constraints.required_buffer,
-                    dependencies=[f"{self.id}_chunk_{i-1}"] if i > 1 else []  # Chain dependencies
+                    dependencies=chunk_dependencies  # Use the prepared dependencies
                 )
             )
             chunks.append(chunk)
