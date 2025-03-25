@@ -2,10 +2,11 @@ import dataclasses
 import pytest
 from datetime import datetime, timedelta
 from typing import List
-from src.domain.scheduling import SchedulingStrategy, Event, TimeBlockZone, TimeBlock, TimeBlockType
+from src.domain.scheduling import SchedulingStrategy, SequenceBasedStrategy  # Updated import
 from src.domain.scheduler import Scheduler
 from src.domain.conflict import ConflictDetector
 from src.domain.task import Task, TaskConstraints, EnergyLevel, ZoneType
+from src.domain.timeblock import TimeBlock, TimeBlockZone, TimeBlockType, Event
 
 class MockTaskRepository:
     def __init__(self, tasks=None):
@@ -26,42 +27,6 @@ class MockCalendarRepository:
     
     def remove_managed_events(self):
         pass
-
-class SequenceBasedStrategy(SchedulingStrategy):
-    def schedule(self, tasks: List[Task], zones: List[TimeBlockZone], existing_events: List[Event]) -> List[Event]:
-        events = []
-        # Sort tasks by due date first, then by sequence number within each project
-        sorted_tasks = sorted(tasks, key=lambda t: (t.due_date, t.project_id, t.sequence_number))
-
-        for task in sorted_tasks:
-            suitable_zone = next(
-                (zone for zone in zones
-                 if zone.zone_type == task.constraints.zone_type
-                 and zone.energy_level == task.constraints.energy_level),
-                None
-            )
-
-            if not suitable_zone:
-                continue
-
-            current_time = suitable_zone.start
-            event_created = False
-
-            while current_time < suitable_zone.end and not event_created:
-                conflict = ConflictDetector.find_conflicts(task, current_time, suitable_zone)
-                if not conflict:
-                    event = Event(
-                        id=task.id,
-                        start=current_time,
-                        end=current_time + timedelta(minutes=task.duration),
-                        title=task.title,
-                        type=TimeBlockType.MANAGED
-                    )
-                    events.append(event)
-                    event_created = True
-                current_time += timedelta(minutes=15)
-                
-        return events
 
 @pytest.fixture
 def deep_work_zone():
