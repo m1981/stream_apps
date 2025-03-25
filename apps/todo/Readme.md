@@ -45,6 +45,7 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
 5. `Planning Horizon` - The 3-4 week period for scheduling
 6. `Time Block Zone` - A predefined time period for specific types of work
 7. `Scheduling Window` - Available slots within appropriate Time Block Zones
+8. `Task Sequence` - The natural ordering of tasks within a Todoist project, reflecting logical workflow and implicit dependencies
 
 ## Time Block Zones
 
@@ -77,7 +78,7 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
 1. `Basic Properties`:
    - Duration (estimated time)
    - Due date (from Todoist)
-   - Priority (from Todoist)
+   - Sequence number (position in Todoist project)
    - Project (from Todoist)
 
 2. `Zone Requirements`:
@@ -95,15 +96,17 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
 
 ## Scheduling Rules
 
-1. `Zone Matching`:
+1. `Task Sequence Resolution`:
+   - Maintain project task sequence from Todoist as primary ordering
+   - Use due dates for cross-project scheduling
+   - Consider dependencies before sequence
+   - Tasks within same project maintain Todoist order
+   - Cross-project tasks interleave based on due dates
+
+2. `Zone Matching`:
    - Tasks must be scheduled in compatible Time Block Zones
    - Energy level requirements must match zone characteristics
    - Respect minimum duration constraints
-
-2. `Priority Resolution`:
-   - Higher priority tasks get preferred time slots
-   - Due dates take precedence over preferred time blocks
-   - Maintain buffer times between tasks
 
 3. `Task Splitting`:
    - Only split tasks marked as splittable
@@ -186,11 +189,11 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
 - Test zone constraints
 
 4. Optimization and Edge Cases
-   4.1. Priority Handling
-   - Implement priority-based scheduling
+   4.1. Sequence Handling
+   - Implement sequence-based scheduling
    - Add due date considerations
    - Handle task dependencies
-   - Test priority conflicts
+   - Test sequence conflicts
 
 4.2. Rescheduling Logic
 - Implement clean operation

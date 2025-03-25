@@ -79,7 +79,7 @@ class TestTaskDependencies:
             title="Task 1",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "dependencies": []}
@@ -91,7 +91,7 @@ class TestTaskDependencies:
             title="Task 2",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=2,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "dependencies": ["task1"]}
@@ -103,7 +103,7 @@ class TestTaskDependencies:
             title="Task 3",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=3,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "dependencies": ["task2"]}
@@ -135,7 +135,7 @@ class TestTaskDependencies:
             title="Task 1",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "dependencies": ["task2"]}
@@ -147,7 +147,7 @@ class TestTaskDependencies:
             title="Task 2",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=2,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "dependencies": ["task1"]}

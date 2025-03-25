@@ -25,10 +25,10 @@ class MockCalendarRepository:
     def remove_managed_events(self):
         pass
 
-class ReschedulingStrategy(SchedulingStrategy):
+class SequenceBasedStrategy(SchedulingStrategy):
     def schedule(self, tasks: List[Task], zones: List[TimeBlockZone], existing_events: List[Event]) -> List[Event]:
         events = []
-        sorted_tasks = sorted(tasks, key=lambda t: (t.priority, t.due_date))
+        sorted_tasks = sorted(tasks, key=lambda t: (t.sequence_number, t.due_date))
         
         for task in sorted_tasks:
             # Find appropriate zone
@@ -88,7 +88,7 @@ class TestRescheduling:
             events=[]
         )
 
-    def test_reschedules_on_priority_change(self, default_constraints, deep_work_zone):
+    def test_reschedules_on_sequence_change(self, default_constraints, deep_work_zone):
         start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
         
         task = Task(
@@ -96,8 +96,8 @@ class TestRescheduling:
             title="Task 1",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=2,
             project_id="test",
+            sequence_number=2,
             constraints=default_constraints
         )
         
@@ -115,7 +115,7 @@ class TestRescheduling:
         scheduler = Scheduler(
             task_repo=MockTaskRepository(tasks=[task]),
             calendar_repo=MockCalendarRepository(),
-            strategy=ReschedulingStrategy()
+            strategy=SequenceBasedStrategy()
         )
         
         # Initial scheduling
@@ -124,15 +124,15 @@ class TestRescheduling:
         assert len(initial_events) > 0, "No events were scheduled"
         original_start = initial_events[0].start
         
-        # Change priority and reschedule
-        task.priority = 1  # Higher priority
+        # Change sequence and reschedule
+        task.sequence_number = 1  # Earlier in sequence
         new_events = scheduler.schedule_tasks(planning_horizon=7)
-        assert len(new_events) > 0, "No events were scheduled after priority change"
+        assert len(new_events) > 0, "No events were scheduled after sequence change"
         
         # Compare only up to minutes for scheduling comparison
         original_start_normalized = original_start.replace(second=0, microsecond=0)
         new_start_normalized = new_events[0].start.replace(second=0, microsecond=0)
-        assert new_start_normalized <= original_start_normalized, "Higher priority task should get same or better time slot"
+        assert new_start_normalized <= original_start_normalized, "Task with earlier sequence should get same or better time slot"
 
     def test_handles_new_calendar_conflicts(self):
         # Test rescheduling when new fixed events are added

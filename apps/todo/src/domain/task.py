@@ -65,32 +65,30 @@ class Task:
     """
     Core domain entity representing a schedulable unit of work.
     
+    Business Rules:
+    - Tasks maintain their Todoist project sequence
+    - Tasks can have explicit dependencies
+    - Tasks must be scheduled in compatible time zones
+    - Tasks can be split if allowed by constraints
+
     System Constraints:
     - Task duration must be positive
     - Due date must be in the future
+    - Sequence number must be non-negative
     - If splittable, total minimum chunk duration must not exceed task duration
     - Split tasks inherit most constraints but cannot be split further
     - Split tasks maintain sequential dependencies
-    
-    Usage:
-    1. Task validation:
-        task.validate() -> List[str]  # Returns validation errors
-    
-    2. Getting minimum schedulable duration:
-        min_duration = task.get_minimum_duration()
-    
-    3. Splitting task:
-        chunks = task.split([30, 30, 30])  # Creates 3 dependent chunks
     """
     id: str
     title: str
     duration: int  # in minutes
     due_date: datetime
-    priority: int
     project_id: str
+    sequence_number: int  # Position in Todoist project
     constraints: TaskConstraints
 
     def validate(self) -> List[str]:
+        """Validates all task properties"""
         errors = []
         
         if self.duration <= 0:
@@ -99,6 +97,9 @@ class Task:
         if self.due_date < datetime.now():
             errors.append("Due date cannot be in the past")
             
+        if self.sequence_number < 0:
+            errors.append("Sequence number must be non-negative")
+
         if self.constraints.is_splittable:
             total_min_duration = self.constraints.min_chunk_duration * self.constraints.max_split_count
             if total_min_duration > self.duration:
@@ -110,7 +111,7 @@ class Task:
         return errors
 
     def get_minimum_duration(self) -> int:
-        """Returns the minimum duration needed for a single block of this task"""
+        """Returns the minimum duration needed for a single block"""
         if self.constraints.is_splittable:
             return self.constraints.min_chunk_duration
         return self.duration
@@ -118,13 +119,15 @@ class Task:
     def split(self, chunk_sizes: List[int]) -> List['Task']:
         """
         Split the task into multiple chunks with specified durations.
-        Business rules:
+
+        Business Rules:
         - Sum of chunks must equal original duration
         - Each chunk inherits zone and energy constraints
         - Chunks are sequentially dependent
         - First chunk inherits original dependencies
+        - Chunks maintain sequential order in project
         """
-        # Validate split parameters
+        # Validation
         if len(chunk_sizes) > self.constraints.max_split_count:
             raise ValueError(f"Exceeds maximum split count of {self.constraints.max_split_count}")
             
@@ -139,6 +142,8 @@ class Task:
 
         # Create chunks
         chunks = []
+        base_sequence = self.sequence_number * 1000  # Create space for chunks in sequence
+
         for i, size in enumerate(chunk_sizes, 1):
             # Set up dependencies for this chunk
             chunk_dependencies = []
@@ -154,8 +159,8 @@ class Task:
                 title=f"{self.title} (Part {i}/{len(chunk_sizes)})",
                 duration=size,
                 due_date=self.due_date,
-                priority=self.priority,
                 project_id=self.project_id,
+                sequence_number=base_sequence + i,  # Maintain order within project
                 constraints=TaskConstraints(
                     zone_type=self.constraints.zone_type,
                     energy_level=self.constraints.energy_level,
@@ -163,7 +168,7 @@ class Task:
                     min_chunk_duration=self.constraints.min_chunk_duration,
                     max_split_count=1,
                     required_buffer=self.constraints.required_buffer,
-                    dependencies=chunk_dependencies  # Use the prepared dependencies
+                    dependencies=chunk_dependencies
                 )
             )
             chunks.append(chunk)

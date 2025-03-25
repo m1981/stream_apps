@@ -106,7 +106,7 @@ class TestBufferManagement:
             title="Deep Task",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
@@ -124,7 +124,7 @@ class TestBufferManagement:
             title="Light Task",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 zone_type=ZoneType.LIGHT,
@@ -164,7 +164,7 @@ class TestBufferManagement:
             title="Task 1",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "required_buffer": 15}
@@ -176,7 +176,7 @@ class TestBufferManagement:
             title="Task 2",
             duration=60,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="test",
             constraints=TaskConstraints(
                 **{**default_constraints.__dict__, "required_buffer": 30}

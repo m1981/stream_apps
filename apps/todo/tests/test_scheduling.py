@@ -1,10 +1,11 @@
+import dataclasses
 import pytest
 from datetime import datetime, timedelta
-from src.domain.scheduling import ConflictDetector, SchedulingConflict
-from src.domain.timeblock import TimeBlock, TimeBlockZone, TimeBlockType, Event
-from src.domain.task import Task, TaskConstraints, ZoneType, EnergyLevel
-from src.domain.scheduler import Scheduler, SchedulingStrategy
 from typing import List
+from src.domain.scheduling import SchedulingStrategy, Event, TimeBlockZone, TimeBlock, TimeBlockType
+from src.domain.scheduler import Scheduler
+from src.domain.conflict import ConflictDetector
+from src.domain.task import Task, TaskConstraints, EnergyLevel, ZoneType
 
 class MockTaskRepository:
     def __init__(self, tasks=None):
@@ -26,26 +27,26 @@ class MockCalendarRepository:
     def remove_managed_events(self):
         pass
 
-class PriorityBasedStrategy(SchedulingStrategy):
+class SequenceBasedStrategy(SchedulingStrategy):
     def schedule(self, tasks: List[Task], zones: List[TimeBlockZone], existing_events: List[Event]) -> List[Event]:
         events = []
-        # Fix: Sort by priority (1 is highest) and then by due date
-        sorted_tasks = sorted(tasks, key=lambda t: (t.priority, t.due_date))  # Remove negative priority
-        
+        # Sort tasks by due date first, then by sequence number within each project
+        sorted_tasks = sorted(tasks, key=lambda t: (t.due_date, t.project_id, t.sequence_number))
+
         for task in sorted_tasks:
             suitable_zone = next(
-                (zone for zone in zones 
-                 if zone.zone_type == task.constraints.zone_type 
+                (zone for zone in zones
+                 if zone.zone_type == task.constraints.zone_type
                  and zone.energy_level == task.constraints.energy_level),
                 None
             )
-            
+
             if not suitable_zone:
                 continue
-                
+
             current_time = suitable_zone.start
             event_created = False
-            
+
             while current_time < suitable_zone.end and not event_created:
                 conflict = ConflictDetector.find_conflicts(task, current_time, suitable_zone)
                 if not conflict:
@@ -72,7 +73,8 @@ def deep_work_zone():
         energy_level=EnergyLevel.HIGH,
         min_duration=120,
         buffer_required=15,
-        events=[]
+        events=[],
+        type=TimeBlockType.MANAGED  # Added type
     )
 
 class TestConflictDetection:
@@ -92,8 +94,8 @@ class TestConflictDetection:
             title="Deep Work Task",
             duration=120,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,  # Changed from priority
             constraints=constraints
         )
 
@@ -105,7 +107,8 @@ class TestConflictDetection:
             energy_level=EnergyLevel.MEDIUM,
             min_duration=30,
             buffer_required=10,
-            events=[]
+            events=[],
+            type=TimeBlockType.MANAGED  # Added type
         )
         
         conflict = ConflictDetector.find_conflicts(
@@ -146,7 +149,8 @@ class TestConflictDetection:
                     title="Existing Meeting",
                     type=TimeBlockType.FIXED
                 )
-            ]
+            ],
+            type=TimeBlockType.MANAGED  # Added type
         )
         
         proposed_start = start_time + timedelta(minutes=60)  # Right in the middle of existing event
@@ -183,7 +187,8 @@ class TestConflictDetection:
             energy_level=EnergyLevel.HIGH,
             min_duration=30,
             buffer_required=15,
-            events=[existing_event]
+            events=[existing_event],
+            type=TimeBlockType.MANAGED  # Added type
         )
         
         proposed_start = existing_event.start - timedelta(minutes=30)  # Overlaps with start
@@ -217,7 +222,8 @@ class TestConflictDetection:
             energy_level=EnergyLevel.HIGH,
             min_duration=30,
             buffer_required=15,
-            events=[existing_event]
+            events=[existing_event],
+            type=TimeBlockType.MANAGED  # Added type
         )
         
         proposed_start = existing_event.end - timedelta(minutes=30)  # Overlaps with end
@@ -244,7 +250,8 @@ class TestConflictDetection:
             energy_level=EnergyLevel.LOW,
             min_duration=30,
             buffer_required=15,
-            events=[]
+            events=[],
+            type=TimeBlockType.MANAGED  # Added type
         )
         
         system_design_task = Task(
@@ -252,8 +259,8 @@ class TestConflictDetection:
             title="System Architecture Design",
             duration=120,  # 2 hours
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,  # Requires high energy
@@ -290,6 +297,7 @@ class TestConflictDetection:
             energy_level=EnergyLevel.HIGH,
             min_duration=120,  # 2 hour minimum
             buffer_required=15,
+            type=TimeBlockType.MANAGED,  # Added missing type parameter
             events=[]
         )
         
@@ -298,8 +306,8 @@ class TestConflictDetection:
             title="Quick Code Review",
             duration=15,  # 15 minutes
             due_date=datetime.now() + timedelta(days=1),
-            priority=2,
             project_id="proj1",
+            sequence_number=1,
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,
@@ -324,7 +332,7 @@ class TestConflictDetection:
 
     def test_find_available_slot_scanning_behavior(self):
         """
-        Tests how find_available_slot scans through time in 15-minute increments
+        Tests that find_available_slot correctly scans through time in 15-minute increments
         until finding an open slot or reaching the end
         """
         # Arrange
@@ -341,6 +349,7 @@ class TestConflictDetection:
             energy_level=EnergyLevel.HIGH,
             min_duration=30,
             buffer_required=15,
+            type=TimeBlockType.MANAGED,  # Added type
             events=[
                 Event(
                     id="meeting1",
@@ -365,8 +374,8 @@ class TestConflictDetection:
             title="Quick Task",
             duration=30,
             due_date=end_time,
-            priority=1,
             project_id="proj1",
+            sequence_number=1,
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,
@@ -410,6 +419,7 @@ class TestConflictDetection:
             energy_level=EnergyLevel.HIGH,
             min_duration=30,
             buffer_required=15,
+            type=TimeBlockType.MANAGED,  # Added type
             events=[
                 Event(
                     id="meeting1",
@@ -433,7 +443,7 @@ class TestConflictDetection:
             title="No Room For This",
             duration=60,
             due_date=end_time,
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="proj1",
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
@@ -477,7 +487,7 @@ class TestConflictDetection:
             title="Short Task",
             duration=15,  # Would be too short for deep work zone
             due_date=start_time + timedelta(hours=4),
-            priority=1,
+            sequence_number=1,  # Changed from priority
             project_id="proj1",
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
@@ -496,6 +506,62 @@ class TestConflictDetection:
         # Assert
         assert conflict is None  # Should pass despite zone constraints
 
+    def test_respects_buffer_requirements(self):
+        """
+        Tests that scheduling respects buffer time requirements between tasks
+        """
+        # Arrange
+        start_time = datetime.now().replace(hour=9, minute=0)
+        time_block = TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            type=TimeBlockType.MANAGED,
+            events=[
+                Event(
+                    id="existing_event",
+                    start=start_time,
+                    end=start_time + timedelta(hours=2),  # 9:00 - 11:00
+                    title="Existing Meeting",
+                    type=TimeBlockType.FIXED
+                )
+            ]
+        )
+
+        task = Task(
+            id="task1",
+            title="New Task",
+            duration=60,
+            due_date=start_time + timedelta(days=1),
+            sequence_number=1,
+            project_id="proj1",
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
+
+        # Act
+        available_slot = ConflictDetector.find_available_slot(
+            task,
+            time_block,
+            start_time
+        )
+
+        # Assert
+        # The first available slot should be after the existing event (11:00)
+        # plus the required buffer time (15 minutes)
+        expected_slot = start_time + timedelta(hours=2, minutes=15)  # 11:15 AM
+        assert available_slot == expected_slot
+
 class TestPriorityScheduling:
     @pytest.fixture
     def default_constraints(self):
@@ -510,49 +576,216 @@ class TestPriorityScheduling:
         )
 
     @pytest.fixture
-    def priority_tasks(self, default_constraints):
+    def sequence_tasks(self, default_constraints):
+        """
+        Simulates a real project workflow for writing a blog post,
+        with tasks in natural Todoist sequence
+        """
+        now = datetime.now()
         return [
-            Task(id="high", 
-                title="High Priority", 
-                duration=60, 
-                priority=1,
-                due_date=datetime.now() + timedelta(days=1),
-                project_id="test_project",
-                constraints=default_constraints),
-            Task(id="medium", 
-                title="Medium Priority", 
-                duration=60, 
-                priority=2,
-                due_date=datetime.now() + timedelta(days=1),
-                project_id="test_project",
-                constraints=default_constraints),
-            Task(id="low", 
-                title="Low Priority", 
-                duration=60, 
-                priority=3,
-                due_date=datetime.now() + timedelta(days=1),
-                project_id="test_project",
-                constraints=default_constraints)
+            Task(
+                id="research",
+                title="Research blog topic",
+                duration=60,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=1,
+                constraints=default_constraints
+            ),
+            Task(
+                id="outline",
+                title="Create content outline",
+                duration=30,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=2,
+                constraints=default_constraints
+            ),
+            Task(
+                id="draft",
+                title="Write first draft",
+                duration=120,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=3,
+                constraints=default_constraints
+            ),
+            Task(
+                id="review",
+                title="Technical review",
+                duration=45,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=4,
+                constraints=default_constraints
+            )
         ]
 
-    def test_schedules_by_priority(self, priority_tasks, deep_work_zone):
-        # Initialize scheduler with the priority tasks in the repository
-        task_repo = MockTaskRepository(tasks=priority_tasks)
+    def test_respects_project_sequence(self, sequence_tasks, deep_work_zone):
+        """Tests that tasks are scheduled in their natural project sequence"""
+        # Initialize scheduler with sequence tasks
+        task_repo = MockTaskRepository(tasks=sequence_tasks)
         calendar_repo = MockCalendarRepository()
-        strategy = PriorityBasedStrategy()
+        strategy = SequenceBasedStrategy()
         
         scheduler = Scheduler(task_repo, calendar_repo, strategy)
         events = scheduler.schedule_tasks(planning_horizon=7)
         
-        # Verify high priority task gets preferred time slot
-        assert len(events) > 0, "No events were scheduled"
-        assert events[0].id == "high", "High priority task should be scheduled first"
+        # Verify events are scheduled in sequence
+        assert len(events) == 4, "All tasks should be scheduled"
         
-        # Compare normalized times (removing microseconds)
-        event_start = events[0].start.replace(microsecond=0)
-        zone_start = deep_work_zone.start.replace(microsecond=0)
-        assert event_start == zone_start, "High priority task should get preferred time slot"
+        # Check sequence order is maintained
+        scheduled_ids = [event.id for event in events]
+        expected_sequence = ['research', 'outline', 'draft', 'review']
+        assert scheduled_ids == expected_sequence, "Tasks should be scheduled in project sequence order"
+        
+        # Verify each task starts after the previous one ends
+        for i in range(1, len(events)):
+            assert events[i].start >= events[i-1].end, \
+                f"Task {events[i].id} should start after {events[i-1].id} ends"
 
-    def test_handles_priority_conflicts_with_due_dates(self):
-        # Test when lower priority task has earlier due date
-        pass
+    def test_cross_project_scheduling(self, default_constraints):
+        """
+        Tests scheduling tasks from multiple projects with different due dates,
+        simulating parallel work on blog post and client project
+        """
+        now = datetime.now()
+        
+        blog_tasks = [
+            Task(
+                id="blog_research",
+                title="Research blog topic",
+                duration=60,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=1,
+                constraints=default_constraints
+            ),
+            Task(
+                id="blog_write",
+                title="Write blog post",
+                duration=120,
+                due_date=now + timedelta(days=5),
+                project_id="blog_post",
+                sequence_number=2,
+                constraints=default_constraints
+            )
+        ]
+        
+        client_tasks = [
+            Task(
+                id="client_spec",
+                title="Write specification",
+                duration=90,
+                due_date=now + timedelta(days=2),  # Earlier due date
+                project_id="client_project",
+                sequence_number=1,
+                constraints=default_constraints
+            ),
+            Task(
+                id="client_review",
+                title="Client review meeting",
+                duration=60,
+                due_date=now + timedelta(days=2),
+                project_id="client_project",
+                sequence_number=2,
+                constraints=default_constraints
+            )
+        ]
+        
+        task_repo = MockTaskRepository(tasks=blog_tasks + client_tasks)
+        calendar_repo = MockCalendarRepository()
+        strategy = SequenceBasedStrategy()
+        
+        scheduler = Scheduler(task_repo, calendar_repo, strategy)
+        events = scheduler.schedule_tasks(planning_horizon=7)
+        
+        # Verify client project tasks (earlier due date) are scheduled first
+        scheduled_ids = [event.id for event in events]
+        assert scheduled_ids.index('client_spec') < scheduled_ids.index('blog_research'), \
+            "Client tasks with earlier due date should be scheduled before blog tasks"
+        
+        # Verify sequence within each project is maintained
+        assert scheduled_ids.index('client_spec') < scheduled_ids.index('client_review'), \
+            "Client project sequence should be maintained"
+        assert scheduled_ids.index('blog_research') < scheduled_ids.index('blog_write'), \
+            "Blog project sequence should be maintained"
+
+    def test_handles_dependent_project_tasks(self, default_constraints):
+        """
+        Tests scheduling with dependencies across projects,
+        simulating a website launch with content and technical tasks
+        """
+        now = datetime.now()
+        
+        # Content project tasks
+        content_constraints = dataclasses.replace(
+            default_constraints,
+            dependencies=[]
+        )
+        content_tasks = [
+            Task(
+                id="content_write",
+                title="Write website content",
+                duration=120,
+                due_date=now + timedelta(days=3),
+                project_id="content",
+                sequence_number=1,
+                constraints=content_constraints
+            ),
+            Task(
+                id="content_review",
+                title="Review content",
+                duration=60,
+                due_date=now + timedelta(days=3),
+                project_id="content",
+                sequence_number=2,
+                constraints=content_constraints
+            )
+        ]
+        
+        # Technical project tasks depending on content
+        tech_constraints = dataclasses.replace(
+            default_constraints,
+            dependencies=["content_write", "content_review"]
+        )
+        tech_tasks = [
+            Task(
+                id="tech_implement",
+                title="Implement website",
+                duration=180,
+                due_date=now + timedelta(days=5),
+                project_id="technical",
+                sequence_number=1,
+                constraints=tech_constraints
+            ),
+            Task(
+                id="tech_deploy",
+                title="Deploy website",
+                duration=60,
+                due_date=now + timedelta(days=5),
+                project_id="technical",
+                sequence_number=2,
+                constraints=tech_constraints
+            )
+        ]
+        
+        task_repo = MockTaskRepository(tasks=content_tasks + tech_tasks)
+        calendar_repo = MockCalendarRepository()
+        strategy = SequenceBasedStrategy()
+        
+        scheduler = Scheduler(task_repo, calendar_repo, strategy)
+        events = scheduler.schedule_tasks(planning_horizon=7)
+        
+        # Verify content tasks are scheduled before technical tasks
+        scheduled_ids = [event.id for event in events]
+        assert scheduled_ids.index('content_write') < scheduled_ids.index('tech_implement'), \
+            "Content tasks should be scheduled before dependent technical tasks"
+        
+        # Verify sequence within projects is maintained
+        assert scheduled_ids.index('content_write') < scheduled_ids.index('content_review'), \
+            "Content project sequence should be maintained"
+        assert scheduled_ids.index('tech_implement') < scheduled_ids.index('tech_deploy'), \
+            "Technical project sequence should be maintained"
+
+    # Priority-based tests removed

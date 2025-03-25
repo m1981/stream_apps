@@ -1,4 +1,5 @@
 import pytest
+import dataclasses
 from datetime import datetime, timedelta
 from src.domain.task import Task, TaskConstraints, EnergyLevel, ZoneType
 
@@ -22,8 +23,8 @@ class TestTaskValidation:
             title="Important Task",
             duration=120,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,  # Changed from priority
             constraints=valid_constraints
         )
 
@@ -55,8 +56,8 @@ class TestTaskSplitting:
             title="Large Task",
             duration=240,  # 4 hours
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,  # Changed from priority
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,
@@ -79,8 +80,9 @@ class TestTaskSplitting:
         """Test splitting task into unequal chunks"""
         chunks = splittable_task.split(chunk_sizes=[90, 90, 60])
         assert len(chunks) == 3
-        assert [chunk.duration for chunk in chunks] == [90, 90, 60]
-        assert sum(chunk.duration for chunk in chunks) == splittable_task.duration
+        assert chunks[0].duration == 90
+        assert chunks[1].duration == 90
+        assert chunks[2].duration == 60
 
     def test_split_preserves_metadata(self, splittable_task):
         """Test that split chunks preserve original task metadata"""
@@ -89,7 +91,7 @@ class TestTaskSplitting:
             assert chunk.id == f"{splittable_task.id}_chunk_{i}"
             assert chunk.title == f"{splittable_task.title} (Part {i}/2)"
             assert chunk.due_date == splittable_task.due_date
-            assert chunk.priority == splittable_task.priority
+            assert chunk.sequence_number == splittable_task.sequence_number * 1000 + i  # Updated from priority check
             assert chunk.project_id == splittable_task.project_id
             assert chunk.constraints.zone_type == splittable_task.constraints.zone_type
             assert chunk.constraints.energy_level == splittable_task.constraints.energy_level
@@ -135,8 +137,8 @@ class TestTaskSplitting:
             title="Dependent Task",
             duration=180,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,
@@ -162,8 +164,8 @@ class TestTaskSplitting:
             title="Zone Restricted Task",
             duration=180,
             due_date=datetime.now() + timedelta(days=1),
-            priority=1,
             project_id="proj1",
+            sequence_number=1,  # Changed from priority
             constraints=TaskConstraints(
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,

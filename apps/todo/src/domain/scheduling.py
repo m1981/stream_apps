@@ -1,9 +1,75 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import List, Optional
 
-from .task import Task
-from .timeblock import TimeBlock, TimeBlockZone, Event
+from .task import Task, ZoneType, EnergyLevel
+
+class TimeBlockType(Enum):
+    FIXED = "fixed"
+    MANAGED = "managed"
+
+@dataclass
+class Event:
+    id: str
+    start: datetime
+    end: datetime
+    title: str
+    type: TimeBlockType
+
+@dataclass
+class TimeBlock:
+    start: datetime
+    end: datetime
+    type: TimeBlockType
+    events: List[Event]
+
+    def get_conflicts(self, start_time: datetime, duration: int) -> List[Event]:
+        """
+        Find any events that conflict with the proposed time slot.
+        
+        Args:
+            start_time: Proposed start time for new event
+            duration: Duration in minutes
+            
+        Returns:
+            List of conflicting events, empty if no conflicts
+        """
+        end_time = start_time + timedelta(minutes=duration)
+        return [
+            event for event in self.events
+            if (start_time < event.end and end_time > event.start)
+        ]
+
+@dataclass
+class TimeBlockZone(TimeBlock):
+    zone_type: ZoneType
+    energy_level: EnergyLevel
+    min_duration: int
+    buffer_required: int
+    events: List[Event]
+
+class SchedulingStrategy(ABC):
+    """
+    Abstract base class for implementing different scheduling strategies.
+    Strategies determine how tasks are assigned to available time blocks.
+    """
+    
+    @abstractmethod
+    def schedule(self, tasks: List[Task], zones: List[TimeBlockZone], existing_events: List[Event]) -> List[Event]:
+        """
+        Schedule tasks into available time blocks according to strategy rules.
+        
+        Args:
+            tasks: List of tasks to be scheduled
+            zones: List of available time block zones
+            existing_events: List of existing calendar events to work around
+            
+        Returns:
+            List of newly created events representing scheduled tasks
+        """
+        pass
 
 """
 Scheduling conflict detection and resolution system.
