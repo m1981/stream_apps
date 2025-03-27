@@ -1,14 +1,29 @@
-# Specification (REF_SP)
+# Specification (SPEC)
 Task Scheduling System: Todoist to Google Calendar Integration
 
 ## Development Constraints  (DEVCON)
 
-We ara great fan of TDD technique so we first write tests to fulfill  business requirements and then move to implementation.
+We are great fans of TDD technique so we first write tests to fulfill business requirements and then move to implementation.
 1. Read REF_SP
 2. Read business logic comments in core files
 3. Read existing test cases
-4. Write tests firsts. Follow best TDD and DDD principles. Refer to business logic. When lack of business logic ask user a questions? 
+4. Write tests first. Follow best TDD and DDD principles. Refer to business logic. When lack of business logic ask user questions.
 5. Provide implementation
+
+### Test Writing Instructions
+When writing tests, follow the Gherkin (Given-When-Then) model to clearly express business requirements:
+
+```gherkin
+Feature: [Feature being tested]
+
+Scenario: [Specific scenario being tested]
+  Given [preconditions and setup]
+  When [actions performed]
+  Then [expected outcomes]
+  And [additional assertions if needed]
+```
+
+Translate these Gherkin scenarios into actual test code using the Arrange-Act-Assert pattern while maintaining the business language and intent of the requirements.
 
 ## Principles (PRINCE)
 
