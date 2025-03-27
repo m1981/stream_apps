@@ -201,20 +201,24 @@ class SequenceBasedStrategy(SchedulingStrategy):
         print(f"No suitable zone found for task {task.id}")
         return False
 
-    def _create_multi_day_zones(self, zones: List[TimeBlockZone], days: int) -> List[TimeBlockZone]:
-        """Create zones for multiple days based on the template zones"""
+    def _create_multi_day_zones(self, base_zones: List[TimeBlockZone], days: int = 7) -> List[TimeBlockZone]:
+        """Create zones for multiple days based on base zone template"""
         multi_day_zones = []
+        start_date = base_zones[0].start
+
         for day in range(days):
-            day_offset = timedelta(days=day)
-            for zone in zones:  # Iterate through ALL zones
+            day_start = start_date + timedelta(days=day)
+            for zone in base_zones:
+                # Create new zone with same properties but adjusted date
                 new_zone = TimeBlockZone(
+                    start=day_start.replace(hour=zone.start.hour, minute=zone.start.minute),
+                    end=day_start.replace(hour=zone.end.hour, minute=zone.end.minute),
                     zone_type=zone.zone_type,
-                    start=zone.start + day_offset,
-                    end=zone.end + day_offset,
                     energy_level=zone.energy_level,
                     min_duration=zone.min_duration,
                     buffer_required=zone.buffer_required,
-                    events=zone.events.copy() if zone.events else []
+                    events=[]
                 )
                 multi_day_zones.append(new_zone)
+        
         return multi_day_zones
