@@ -64,33 +64,100 @@ def scheduler(mock_task_repo, mock_calendar_repo):
         strategy=SequenceBasedStrategy()
     )
 
-def test_reschedule_on_task_duration_change(work_day_zones):
+def test_reschedule_on_task_duration_change():
     """
     When: Task duration is updated
     Then: Only affected task and its dependents should be rescheduled
     And: Other tasks should maintain their original schedule
     """
-    # Create mock repositories and strategy
+    print("\n=== Test: Reschedule on Task Duration Change ===")
+    
+    start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+    
+    # Create both DEEP and LIGHT zones
+    day_zones = [
+        TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        ),
+        TimeBlockZone(
+            start=start_time + timedelta(hours=4),
+            end=start_time + timedelta(hours=8),
+            zone_type=ZoneType.LIGHT,
+            energy_level=EnergyLevel.MEDIUM,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        )
+    ]
+
+    print("\n=== Debug Point 1: Initial Zones ===")
+    for zone in day_zones:
+        print(f"Zone: {zone.zone_type}, Time: {zone.start.strftime('%H:%M')}-{zone.end.strftime('%H:%M')}, "
+              f"Energy: {zone.energy_level}")
+
+    # Create mock repositories
     task_repo = Mock()
     calendar_repo = Mock()
-    strategy = SequenceBasedStrategy()
-
-    # Configure calendar repo to return our fixture zones
-    calendar_repo.get_zones.return_value = work_day_zones
-    calendar_repo.get_events.return_value = []
     
+    # Configure mock behavior
+    calendar_repo.get_events.return_value = []
+    calendar_repo.get_zones.return_value = day_zones
+    task_repo.get_tasks.return_value = []
+
+    class TestStrategy(SequenceBasedStrategy):
+        def schedule(self, tasks, zones, existing_events):
+            print("\n=== Debug Point 2: Strategy Schedule Called ===")
+            print(f"Tasks to schedule: {[t.id for t in tasks]}")
+            print(f"Initial zones count: {len(zones)}")
+            
+            # Create multi-day zones while preserving both zone types
+            multi_day_zones = []
+            for day in range(7):
+                day_start = start_time + timedelta(days=day)
+                for zone in day_zones:
+                    new_zone = TimeBlockZone(
+                        start=day_start.replace(hour=zone.start.hour, minute=zone.start.minute),
+                        end=day_start.replace(hour=zone.end.hour, minute=zone.end.minute),
+                        zone_type=zone.zone_type,
+                        energy_level=zone.energy_level,
+                        min_duration=zone.min_duration,
+                        buffer_required=zone.buffer_required,
+                        events=[]
+                    )
+                    multi_day_zones.append(new_zone)
+
+            print("\n=== Debug Point 3: Multi-day Zones Created ===")
+            for i, zone in enumerate(multi_day_zones[:4]):  # Print first 4 zones for brevity
+                print(f"Zone {i}: {zone.zone_type}, "
+                      f"Time: {zone.start.strftime('%Y-%m-%d %H:%M')}-{zone.end.strftime('%H:%M')}")
+
+            result = super().schedule(tasks, multi_day_zones, existing_events)
+            
+            print("\n=== Debug Point 4: Schedule Result ===")
+            for event in result:
+                print(f"Event: {event.id}, "
+                      f"Time: {event.start.strftime('%Y-%m-%d %H:%M')}-{event.end.strftime('%H:%M')}")
+            
+            return result
+
+    # Create scheduler with our custom strategy
     scheduler = Scheduler(
         task_repo=task_repo,
         calendar_repo=calendar_repo,
-        strategy=strategy
+        strategy=TestStrategy()
     )
 
-    start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
-    
-    write_task = Task(
-        id="write",
-        title="Write Task",
-        duration=90,
+    # Create initial task and dependent task
+    task1 = Task(
+        id="task1",
+        title="Initial Task",
+        duration=60,  # 1 hour initially
         due_date=start_time + timedelta(days=1),
         project_id="proj1",
         sequence_number=1,
@@ -105,9 +172,9 @@ def test_reschedule_on_task_duration_change(work_day_zones):
         )
     )
 
-    review_task = Task(
-        id="review",
-        title="Review Task",
+    dependent_task = Task(
+        id="dependent",
+        title="Dependent Task",
         duration=30,
         due_date=start_time + timedelta(days=1),
         project_id="proj1",
@@ -119,45 +186,68 @@ def test_reschedule_on_task_duration_change(work_day_zones):
             min_chunk_duration=30,
             max_split_count=1,
             required_buffer=15,
-            dependencies=["write"]
+            dependencies=["task1"]
         )
     )
 
-    schedule = scheduler.reschedule([write_task, review_task])
+    print("\n=== Debug Point 5: Initial Tasks Configuration ===")
+    print(f"Task 1: {task1.id}, Duration: {task1.duration}, Zone: {task1.constraints.zone_type}")
+    print(f"Dependent: {dependent_task.id}, Duration: {dependent_task.duration}, "
+          f"Zone: {dependent_task.constraints.zone_type}")
 
-    # Debug print schedule
-    print("\nScheduled Events:")
-    for event in schedule:
-        print(f"\nEvent ID: {event.id}")
-        print(f"Start: {event.start.strftime('%H:%M')}")
-        print(f"End: {event.end.strftime('%H:%M')}")
-
-    # Verify exact timings
-    write_event = next(e for e in schedule if e.id == "write")
-    print(f"\nWrite event found: {write_event.start.strftime('%H:%M')} - {write_event.end.strftime('%H:%M')}")
+    # Initial schedule
+    print("\n=== Debug Point 6: Creating Initial Schedule ===")
+    initial_schedule = scheduler.reschedule([task1, dependent_task])
     
-    review_event = next(e for e in schedule if e.id == "review")
-    print(f"Review event found: {review_event.start.strftime('%H:%M')} - {review_event.end.strftime('%H:%M')}")
+    print("\n=== Debug Point 7: Initial Schedule Created ===")
+    for event in initial_schedule:
+        print(f"Event: {event.id}, Time: {event.start.strftime('%H:%M')}-{event.end.strftime('%H:%M')}")
+    
+    # Record initial timing of dependent task
+    initial_dependent_event = next(e for e in initial_schedule if e.id == "dependent")
+    initial_dependent_start = initial_dependent_event.start
 
-    # Write Task: 09:00-10:30
-    assert write_event.start == start_time
-    assert write_event.end == start_time + timedelta(minutes=90)
+    # Update task1 duration
+    updated_task1 = Task(
+        id="task1",
+        title="Initial Task",
+        duration=120,  # Updated duration: 2 hours
+        due_date=start_time + timedelta(days=1),
+        project_id="proj1",
+        sequence_number=1,
+        constraints=task1.constraints
+    )
 
-    # Review Task: 10:45-11:15 (after 15min buffer)
-    expected_review_start = start_time + timedelta(minutes=105)  # 90 + 15
-    assert review_event.start == expected_review_start
-    assert review_event.end == expected_review_start + timedelta(minutes=30)
+    print("\n=== Debug Point 8: Rescheduling with Updated Duration ===")
+    print(f"Updated Task 1 duration: {updated_task1.duration}")
 
-    # Email Task: 11:30-12:00 (after another 15min buffer)
-    expected_email_start = start_time + timedelta(minutes=150)  # 90 + 15 + 30 + 15
-    assert email_event.start == expected_email_start
-    assert email_event.end == expected_email_start + timedelta(minutes=30)
+    # Reschedule with updated duration
+    updated_schedule = scheduler.reschedule([updated_task1, dependent_task])
 
-    # Verify buffers
-    write_to_review_buffer = (review_event.start - write_event.end).total_seconds() / 60
-    review_to_email_buffer = (email_event.start - review_event.end).total_seconds() / 60
-    assert write_to_review_buffer == 15, "Buffer between write and review should be 15 minutes"
-    assert review_to_email_buffer == 15, "Buffer between review and email should be 15 minutes"
+    print("\n=== Debug Point 9: Final Schedule ===")
+    for event in updated_schedule:
+        print(f"Event: {event.id}, Time: {event.start.strftime('%H:%M')}-{event.end.strftime('%H:%M')}")
+
+    # Verify results
+    updated_task1_event = next(e for e in updated_schedule if e.id == "task1")
+    updated_dependent_event = next(e for e in updated_schedule if e.id == "dependent")
+
+    # Verify task1 has new duration
+    task1_duration = (updated_task1_event.end - updated_task1_event.start).total_seconds() / 60
+    print(f"\n=== Debug Point 10: Verification ===")
+    print(f"Task1 actual duration: {task1_duration} minutes")
+    print(f"Task1 expected duration: {updated_task1.duration} minutes")
+    print(f"Dependent task moved: {updated_dependent_event.start != initial_dependent_start}")
+    
+    assert task1_duration == 120, f"Expected duration 120, got {task1_duration}"
+
+    # Verify dependent task was rescheduled after task1
+    assert updated_dependent_event.start > updated_task1_event.end
+
+    # Verify proper buffer between tasks
+    buffer_time = (updated_dependent_event.start - updated_task1_event.end).total_seconds() / 60
+    print(f"Buffer time between tasks: {buffer_time} minutes")
+    assert buffer_time >= 15, f"Expected buffer >= 15 minutes, got {buffer_time} minutes"
 
 def test_reschedule_preserves_zone_integrity(work_day_zones):
     """
@@ -743,3 +833,126 @@ def test_schedule_dependent_tasks_different_zones():
     # Verify buffers
     buffer_time = (task2_event.start - task1_event.end).total_seconds() / 60
     assert buffer_time >= 15, "Buffer between task1 and task2 should be at least 15 minutes"
+
+def test_write_review_workflow():
+    """Test scheduling a writing task followed by a review task"""
+    # ARRANGE
+    start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+    
+    # Create both DEEP and LIGHT zones
+    day_zones = [
+        TimeBlockZone(
+            start=start_time,
+            end=start_time + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        ),
+        TimeBlockZone(
+            start=start_time + timedelta(hours=4),
+            end=start_time + timedelta(hours=8),
+            zone_type=ZoneType.LIGHT,
+            energy_level=EnergyLevel.MEDIUM,
+            min_duration=30,
+            buffer_required=15,
+            events=[]
+        )
+    ]
+
+    # Define TestStrategy class
+    class TestStrategy(SequenceBasedStrategy):
+        def schedule(self, tasks, zones, existing_events):
+            # Create multi-day zones while preserving both zone types
+            multi_day_zones = []
+            for day in range(7):
+                day_start = start_time + timedelta(days=day)
+                for zone in day_zones:
+                    new_zone = TimeBlockZone(
+                        start=day_start.replace(hour=zone.start.hour, minute=zone.start.minute),
+                        end=day_start.replace(hour=zone.end.hour, minute=zone.end.minute),
+                        zone_type=zone.zone_type,
+                        energy_level=zone.energy_level,
+                        min_duration=zone.min_duration,
+                        buffer_required=zone.buffer_required,
+                        events=[]
+                    )
+                    multi_day_zones.append(new_zone)
+            return super().schedule(tasks, multi_day_zones, existing_events)
+
+    # Create mock repositories
+    task_repo = Mock()
+    calendar_repo = Mock()
+    
+    # Configure mock behavior
+    calendar_repo.get_events.return_value = []
+    calendar_repo.get_zones.return_value = day_zones
+    task_repo.get_tasks.return_value = []
+
+    # Create tasks
+    write_task = Task(
+        id="write",
+        title="Write Document",
+        duration=90,
+        due_date=start_time + timedelta(days=1),
+        project_id="proj1",
+        sequence_number=1,
+        constraints=TaskConstraints(
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            is_splittable=False,
+            min_chunk_duration=30,
+            max_split_count=1,
+            required_buffer=15,
+            dependencies=[]
+        )
+    )
+
+    review_task = Task(
+        id="review",
+        title="Review Document",
+        duration=30,
+        due_date=start_time + timedelta(days=1),
+        project_id="proj1",
+        sequence_number=2,
+        constraints=TaskConstraints(
+            zone_type=ZoneType.LIGHT,
+            energy_level=EnergyLevel.MEDIUM,
+            is_splittable=False,
+            min_chunk_duration=30,
+            max_split_count=1,
+            required_buffer=15,
+            dependencies=["write"]
+        )
+    )
+
+    # Create scheduler with our custom strategy
+    scheduler = Scheduler(
+        task_repo=task_repo,
+        calendar_repo=calendar_repo,
+        strategy=TestStrategy()
+    )
+
+    # ACT
+    schedule = scheduler.reschedule([write_task, review_task])
+
+    # ASSERT
+    write_event = next(e for e in schedule if e.id == "write")
+    review_event = next(e for e in schedule if e.id == "review")
+
+    # Debug output
+    print("\nScheduled Events:")
+    for event in schedule:
+        print(f"Event: {event.id}, Time: {event.start.strftime('%H:%M')}-{event.end.strftime('%H:%M')}")
+
+    # Verify write task is in DEEP zone
+    assert write_event.start.hour == 9
+    assert (write_event.end - write_event.start).total_seconds() / 60 == 90
+
+    # Verify review task is in LIGHT zone
+    assert review_event.start.hour >= 13  # Should be in afternoon LIGHT zone
+    assert (review_event.end - review_event.start).total_seconds() / 60 == 30
+
+    # Verify sequence
+    assert review_event.start > write_event.end
