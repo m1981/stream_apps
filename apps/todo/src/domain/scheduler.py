@@ -95,3 +95,41 @@ class Scheduler:
             self.calendar_repo.create_event(event)
             
         return scheduled_events
+
+    def reschedule(self, tasks, affected_task_ids=None, fixed_events=None):
+        """
+        Reschedule tasks, optionally focusing on specific affected tasks.
+        
+        Args:
+            tasks: List of tasks to reschedule
+            affected_task_ids: Optional list of task IDs that were modified
+            fixed_events: Optional list of fixed events to work around
+        
+        Returns:
+            List of new scheduled events
+        """
+        # Remove existing managed events
+        self.calendar_repo.remove_managed_events()
+        
+        # Calculate planning window
+        start = datetime.now().replace(hour=9, minute=0)
+        end = start + timedelta(days=7)  # Default 7-day planning horizon
+        
+        # Get existing fixed events if not provided
+        if fixed_events is None:
+            fixed_events = [e for e in self.calendar_repo.get_events(start, end)
+                          if e.type == TimeBlockType.FIXED]
+        
+        # Create default zone if none provided
+        zones = [TimeBlockZone(
+            start=start,
+            end=start + timedelta(hours=4),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            events=fixed_events
+        )]
+        
+        # Schedule tasks using strategy
+        return self.strategy.schedule(tasks, zones, fixed_events)

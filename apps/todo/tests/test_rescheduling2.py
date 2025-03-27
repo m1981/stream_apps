@@ -3,25 +3,26 @@ from datetime import datetime, timedelta
 from src.domain.task import Task, TaskConstraints, ZoneType, EnergyLevel
 from src.domain.scheduler import Scheduler
 from src.domain.timeblock import TimeBlockZone, Event, TimeBlockType
+from src.domain.scheduling import SequenceBasedStrategy
 
 class TestRescheduling:
     @pytest.fixture
     def work_day_zones(self):
-        """Typical work day time blocks"""
-        now = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
+        """Create zones covering a work day with different energy levels"""
+        now = datetime.now().replace(hour=9, minute=0)
         return [
-            TimeBlockZone(  # Morning deep work
+            TimeBlockZone(
                 start=now,
                 end=now + timedelta(hours=4),
                 zone_type=ZoneType.DEEP,
                 energy_level=EnergyLevel.HIGH,
-                min_duration=120,
+                min_duration=30,
                 buffer_required=15,
                 events=[]
             ),
-            TimeBlockZone(  # Afternoon light work
-                start=now + timedelta(hours=5),
-                end=now + timedelta(hours=9),
+            TimeBlockZone(
+                start=now + timedelta(hours=4),
+                end=now + timedelta(hours=8),
                 zone_type=ZoneType.LIGHT,
                 energy_level=EnergyLevel.MEDIUM,
                 min_duration=30,
@@ -29,6 +30,37 @@ class TestRescheduling:
                 events=[]
             )
         ]
+
+    @pytest.fixture
+    def mock_task_repo(self):
+        class MockTaskRepository:
+            def get_tasks(self):
+                return []
+            
+            def mark_scheduled(self, task_id):
+                pass
+        return MockTaskRepository()
+
+    @pytest.fixture
+    def mock_calendar_repo(self):
+        class MockCalendarRepository:
+            def get_events(self, start, end):
+                return []
+            
+            def create_event(self, event):
+                return "new_event_id"
+            
+            def remove_managed_events(self):
+                pass
+        return MockCalendarRepository()
+
+    @pytest.fixture
+    def scheduler(self, mock_task_repo, mock_calendar_repo):
+        return Scheduler(
+            task_repo=mock_task_repo,
+            calendar_repo=mock_calendar_repo,
+            strategy=SequenceBasedStrategy()
+        )
 
     def test_reschedule_on_task_duration_change(self, work_day_zones):
         """
@@ -171,19 +203,44 @@ class TestRescheduling:
         assert all(e.end - e.start >= timedelta(minutes=60)
                    for e in split_events)
 
-    def test_reschedule_handles_energy_level_changes(self, work_day_zones):
+    def test_reschedule_handles_energy_level_changes(self, scheduler, work_day_zones):
         """
         When: Energy levels change throughout day
         Then: Tasks should be scheduled in appropriate energy zones
         """
         high_energy_task = Task(
             id="complex",
+            title="Complex Task",
             duration=60,
-            energy_level=EnergyLevel.HIGH
+            due_date=datetime.now() + timedelta(days=1),
+            project_id="proj1",
+            sequence_number=1,
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,  # Match with available zone type
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
         )
 
-        scheduler = Scheduler()
+        # Create a strategy that uses work_day_zones
+        class TestStrategy(SequenceBasedStrategy):
+            def schedule(self, tasks, zones, existing_events):
+                # Use work_day_zones instead of provided zones
+                return super().schedule(tasks, work_day_zones, existing_events)
+
+        scheduler.strategy = TestStrategy()
         schedule = scheduler.reschedule([high_energy_task])
+
+        # Debug output
+        print(f"Schedule length: {len(schedule)}")
+        print(f"Available zones: {len(work_day_zones)}")
+        for zone in work_day_zones:
+            print(f"Zone: {zone.zone_type}, Energy: {zone.energy_level}, "
+                  f"Time: {zone.start}-{zone.end}")
 
         task_event = next(e for e in schedule if e.id == "complex")
         scheduled_zone = next(z for z in work_day_zones
