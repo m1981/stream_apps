@@ -132,11 +132,9 @@ class SequenceBasedStrategy(SchedulingStrategy):
             # Calculate required buffer based on previous event
             if events:
                 last_event = events[-1]
-                # Use the maximum buffer requirement between consecutive tasks
                 required_buffer = max(
                     task.constraints.required_buffer,
-                    # Try to get previous task's buffer requirement
-                    getattr(last_event, 'buffer_required', 0)
+                    last_event.buffer_required
                 )
                 current_time = max(
                     zone.start,
@@ -144,7 +142,7 @@ class SequenceBasedStrategy(SchedulingStrategy):
                 )
             else:
                 current_time = zone.start
-            
+        
             if current_time + timedelta(minutes=task.duration) <= zone.end:
                 conflict = ConflictDetector.find_conflicts(task, current_time, zone)
                 if not conflict:
@@ -154,7 +152,7 @@ class SequenceBasedStrategy(SchedulingStrategy):
                         end=current_time + timedelta(minutes=task.duration),
                         title=task.title,
                         type=TimeBlockType.MANAGED,
-                        buffer_required=task.constraints.required_buffer  # Store buffer requirement
+                        buffer_required=task.constraints.required_buffer
                     )
                     events.append(event)
                     scheduled_task_ids.add(task.id)

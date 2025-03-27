@@ -44,6 +44,7 @@ class Event:
     end: datetime
     title: str
     type: TimeBlockType
+    buffer_required: int = 0  # New field for buffer requirements
 
 @dataclass
 class TimeBlock:
