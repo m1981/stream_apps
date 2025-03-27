@@ -118,21 +118,98 @@ class TestRescheduling:
 
     def test_reschedule_maintains_project_sequence(self):
         """
-        When: Task in project sequence is rescheduled
+        When: Tasks in project sequence are rescheduled
         Then: Project task sequence should be maintained
+        
+        Visual representation of expected schedule:
+        
+        Timeline    Task
+        9:00 AM     step1  (sequence=1) -------|
+        10:00 AM    step2  (sequence=2)    -------|
+        11:00 AM    step3  (sequence=3)        -------|
         """
+        # Create mock repositories
+        task_repo = Mock()
+        calendar_repo = Mock()
+        strategy = SequenceBasedStrategy()
+        
+        # Create work day zone
+        morning_zone = TimeBlockZone(
+            start=datetime.now().replace(hour=9),
+            end=datetime.now().replace(hour=12),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            type=TimeBlockType.MANAGED,
+            events=[]
+        )
+        
+        # Configure mock behavior
+        calendar_repo.get_events.return_value = []
+        calendar_repo.get_zones.return_value = [morning_zone]
+        task_repo.get_tasks.return_value = []
+
+        base_constraints = TaskConstraints(
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            is_splittable=False,
+            min_chunk_duration=30,
+            max_split_count=1,
+            required_buffer=15,
+            dependencies=[]
+        )
+
         tasks = [
-            Task(id="step1", project_id="proj1", sequence_number=1),
-            Task(id="step2", project_id="proj1", sequence_number=2),
-            Task(id="step3", project_id="proj1", sequence_number=3)
+            Task(
+                id="step1",
+                title="Step 1",
+                duration=60,
+                due_date=datetime.now() + timedelta(days=1),
+                project_id="proj1",
+                sequence_number=1,
+                constraints=base_constraints
+            ),
+            Task(
+                id="step2",
+                title="Step 2",
+                duration=60,
+                due_date=datetime.now() + timedelta(days=1),
+                project_id="proj1",
+                sequence_number=2,
+                constraints=base_constraints
+            ),
+            Task(
+                id="step3",
+                title="Step 3",
+                duration=60,
+                due_date=datetime.now() + timedelta(days=1),
+                project_id="proj1",
+                sequence_number=3,
+                constraints=base_constraints
+            )
         ]
 
-        scheduler = Scheduler()
-        new_schedule = scheduler.reschedule([tasks[1]])  # Reschedule middle task
+        scheduler = Scheduler(
+            task_repo=task_repo,
+            calendar_repo=calendar_repo,
+            strategy=strategy
+        )
 
+        # Reschedule ALL tasks, not just the middle one
+        new_schedule = scheduler.reschedule(tasks)
+
+        # Verify sequence
         scheduled_ids = [e.id for e in new_schedule]
-        assert scheduled_ids.index("step1") < scheduled_ids.index("step2")
-        assert scheduled_ids.index("step2") < scheduled_ids.index("step3")
+        assert len(scheduled_ids) == 3, f"Expected 3 tasks, got {len(scheduled_ids)}"
+        assert scheduled_ids == ["step1", "step2", "step3"], f"Incorrect sequence: {scheduled_ids}"
+
+        # Verify timing
+        events = sorted(new_schedule, key=lambda e: e.start)
+        for i in range(len(events) - 1):
+            assert events[i].end <= events[i + 1].start, (
+                f"Task {events[i].id} overlaps with {events[i + 1].id}"
+            )
 
     def test_reschedule_handles_buffer_requirements(self, work_day_zones):
         """
@@ -146,44 +223,50 @@ class TestRescheduling:
         strategy = SequenceBasedStrategy()
 
         # Configure mock return values
-        calendar_repo.get_events.return_value = []  # No existing events
+        calendar_repo.get_events.return_value = []
         calendar_repo.get_zones.return_value = work_day_zones
-        task_repo.get_tasks.return_value = []  # No existing tasks
+        task_repo.get_tasks.return_value = []
 
+        # Create task constraints
+        task1_constraints = TaskConstraints(
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            is_splittable=False,
+            min_chunk_duration=30,
+            max_split_count=1,
+            required_buffer=15,
+            dependencies=[]
+        )
+
+        task2_constraints = TaskConstraints(
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            is_splittable=False,
+            min_chunk_duration=30,
+            max_split_count=1,
+            required_buffer=30,
+            dependencies=[]
+        )
+
+        # Create tasks with all required arguments
         tasks = [
             Task(
                 id="task1",
                 title="Task 1",
                 duration=60,
                 due_date=datetime.now() + timedelta(days=1),
-                project_id="proj1",
                 sequence_number=1,
-                constraints=TaskConstraints(
-                    zone_type=ZoneType.DEEP,
-                    energy_level=EnergyLevel.HIGH,
-                    is_splittable=False,
-                    min_chunk_duration=30,
-                    max_split_count=1,
-                    required_buffer=15,
-                    dependencies=[]
-                )
+                project_id="proj1",
+                constraints=task1_constraints
             ),
             Task(
                 id="task2",
                 title="Task 2",
                 duration=60,
                 due_date=datetime.now() + timedelta(days=1),
-                project_id="proj1",
                 sequence_number=2,
-                constraints=TaskConstraints(
-                    zone_type=ZoneType.DEEP,
-                    energy_level=EnergyLevel.HIGH,
-                    is_splittable=False,
-                    min_chunk_duration=30,
-                    max_split_count=1,
-                    required_buffer=30,
-                    dependencies=[]
-                )
+                project_id="proj1",
+                constraints=task2_constraints
             )
         ]
 

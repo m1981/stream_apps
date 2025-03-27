@@ -37,14 +37,15 @@ class TimeBlockType(Enum):
     MANAGED = "managed"
     ZONE = "zone"
 
-@dataclass
 class Event:
-    id: str
-    start:  datetime
-    end: datetime
-    title: str
-    type: TimeBlockType
-    buffer_required: int = 0  # New field for buffer requirements
+    def __init__(self, id: str, start: datetime, end: datetime, 
+                 title: str, type: TimeBlockType, buffer_required: int = 0):
+        self.id = id
+        self.start = start
+        self.end = end
+        self.title = title
+        self.type = type
+        self.buffer_required = buffer_required  # New field for buffer requirements
 
 @dataclass
 class TimeBlock:

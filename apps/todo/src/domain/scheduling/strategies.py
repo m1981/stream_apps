@@ -100,7 +100,8 @@ class SequenceBasedStrategy(SchedulingStrategy):
                             start=slot_start,
                             end=slot_start + timedelta(minutes=chunk_duration),
                             title=f"{task.title} (Part {chunk_count + 1})",
-                            type=TimeBlockType.MANAGED
+                            type=TimeBlockType.MANAGED,
+                            buffer_required=task.constraints.required_buffer
                         )
                         task_events.append(event)
                         remaining_duration -= chunk_duration
