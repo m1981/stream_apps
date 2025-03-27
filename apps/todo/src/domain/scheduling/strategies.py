@@ -10,12 +10,18 @@ class SequenceBasedStrategy(SchedulingStrategy):
         if not zones:
             return []
             
+        print("\nStarting scheduling process:")
+        print(f"Total tasks to schedule: {len(tasks)}")
+        print(f"Available zones: {len(zones)}")
+        print(f"Existing events: {len(existing_events)}")
+            
         events = existing_events.copy()  # Include existing events
         scheduled_task_ids = set()
         remaining_tasks = tasks.copy()
         
         # Create multi-day zones based on planning horizon
         all_zones = self._create_multi_day_zones(zones, days=7)
+        print(f"\nCreated {len(all_zones)} multi-day zones")
         
         while remaining_tasks:
             available_tasks = [
@@ -23,24 +29,44 @@ class SequenceBasedStrategy(SchedulingStrategy):
                 if all(dep in scheduled_task_ids for dep in task.constraints.dependencies)
             ]
             
+            print(f"\nRemaining tasks: {len(remaining_tasks)}")
+            print(f"Available tasks: {len(available_tasks)}")
+            print(f"Scheduled task IDs: {scheduled_task_ids}")
+            
             if not available_tasks:
                 if remaining_tasks:
                     print(f"DEBUG: Dependency deadlock detected")
+                    print(f"Remaining tasks: {[t.id for t in remaining_tasks]}")
+                    print(f"Their dependencies: {[t.constraints.dependencies for t in remaining_tasks]}")
                 break
                 
             available_tasks.sort(key=lambda t: (t.due_date, t.project_id, t.sequence_number))
             task = available_tasks[0]
             
+            print(f"\nAttempting to schedule task: {task.id}")
+            print(f"Task zone type: {task.constraints.zone_type}")
+            print(f"Task duration: {task.duration}")
+            print(f"Dependencies: {task.constraints.dependencies}")
+            
             # Always try splitting for splittable tasks
             if task.constraints.is_splittable:
+                print(f"Attempting to split task {task.id}")
                 scheduled = self._try_schedule_split_task(task, all_zones, events, scheduled_task_ids)
             else:
+                print(f"Attempting to schedule task {task.id} as single block")
                 scheduled = self._try_schedule_task(task, all_zones, events, scheduled_task_ids)
             
             if scheduled:
+                print(f"Successfully scheduled task {task.id}")
                 remaining_tasks.remove(task)
             else:
-                print(f"DEBUG: Failed to schedule task {task.id} in any zone")
+                print(f"\nFailed to schedule task {task.id}")
+                print("Available zones:")
+                for zone in all_zones:
+                    print(f"- Zone: {zone.zone_type}, Time: {zone.start}-{zone.end}")
+                print("Current events:")
+                for event in events:
+                    print(f"- Event: {event.id}, Time: {event.start}-{event.end}")
                 break
                 
         return [e for e in events if e.type == TimeBlockType.MANAGED]
@@ -126,10 +152,15 @@ class SequenceBasedStrategy(SchedulingStrategy):
     def _try_schedule_task(self, task: Task, zones: List[TimeBlockZone], 
                           events: List[Event], scheduled_task_ids: set) -> bool:
         """Try to schedule task as a single block"""
+        print(f"\nTrying to schedule task {task.id} in available zones")
+        
         for zone in zones:
             if zone.zone_type != task.constraints.zone_type:
+                print(f"Skipping zone - type mismatch: {zone.zone_type} != {task.constraints.zone_type}")
                 continue
                 
+            print(f"Checking zone: {zone.zone_type} ({zone.start} - {zone.end})")
+            
             # Calculate required buffer based on previous event
             if events:
                 last_event = events[-1]
@@ -141,12 +172,16 @@ class SequenceBasedStrategy(SchedulingStrategy):
                     zone.start,
                     last_event.end + timedelta(minutes=required_buffer)
                 )
+                print(f"Last event ends at {last_event.end}, using buffer {required_buffer}")
+                print(f"Calculated start time: {current_time}")
             else:
                 current_time = zone.start
+                print(f"No previous events, starting at zone start: {current_time}")
         
             if current_time + timedelta(minutes=task.duration) <= zone.end:
                 conflict = ConflictDetector.find_conflicts(task, current_time, zone)
                 if not conflict:
+                    print(f"Found valid slot at {current_time}")
                     event = Event(
                         id=task.id,
                         start=current_time,
@@ -158,23 +193,28 @@ class SequenceBasedStrategy(SchedulingStrategy):
                     events.append(event)
                     scheduled_task_ids.add(task.id)
                     return True
+                else:
+                    print(f"Conflict detected: {conflict.message}")
+            else:
+                print(f"Not enough time in zone: need {task.duration} minutes")
+                
+        print(f"No suitable zone found for task {task.id}")
         return False
 
-    def _create_multi_day_zones(self, base_zones: List[TimeBlockZone], days: int) -> List[TimeBlockZone]:
-        """Create zones for multiple days based on base zones"""
-        all_zones = []
+    def _create_multi_day_zones(self, zones: List[TimeBlockZone], days: int) -> List[TimeBlockZone]:
+        """Create zones for multiple days based on the template zones"""
+        multi_day_zones = []
         for day in range(days):
-            for zone in base_zones:
-                next_day = zone.start + timedelta(days=day)
+            day_offset = timedelta(days=day)
+            for zone in zones:  # Iterate through ALL zones
                 new_zone = TimeBlockZone(
-                    start=datetime.combine(next_day.date(), zone.start.time()),
-                    end=datetime.combine(next_day.date(), zone.end.time()),
                     zone_type=zone.zone_type,
+                    start=zone.start + day_offset,
+                    end=zone.end + day_offset,
                     energy_level=zone.energy_level,
                     min_duration=zone.min_duration,
                     buffer_required=zone.buffer_required,
-                    type=zone.type,
-                    events=[]
+                    events=zone.events.copy() if zone.events else []
                 )
-                all_zones.append(new_zone)
-        return all_zones
+                multi_day_zones.append(new_zone)
+        return multi_day_zones
