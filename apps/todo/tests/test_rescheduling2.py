@@ -4,6 +4,8 @@ from src.domain.task import Task, TaskConstraints, ZoneType, EnergyLevel
 from src.domain.scheduler import Scheduler
 from src.domain.timeblock import TimeBlockZone, Event, TimeBlockType
 from src.domain.scheduling import SequenceBasedStrategy
+from unittest.mock import Mock
+from src.domain.scheduling.strategies import SequenceBasedStrategy
 
 class TestRescheduling:
     @pytest.fixture
@@ -138,12 +140,60 @@ class TestRescheduling:
         Then: Required buffer times must be maintained
         And: Zone transition buffers must be respected
         """
+        # Create mock repositories and strategy
+        task_repo = Mock()
+        calendar_repo = Mock()
+        strategy = SequenceBasedStrategy()
+
+        # Configure mock return values
+        calendar_repo.get_events.return_value = []  # No existing events
+        calendar_repo.get_zones.return_value = work_day_zones
+        task_repo.get_tasks.return_value = []  # No existing tasks
+
         tasks = [
-            Task(id="task1", duration=60, buffer_required=15),
-            Task(id="task2", duration=60, buffer_required=30)
+            Task(
+                id="task1",
+                title="Task 1",
+                duration=60,
+                due_date=datetime.now() + timedelta(days=1),
+                project_id="proj1",
+                sequence_number=1,
+                constraints=TaskConstraints(
+                    zone_type=ZoneType.DEEP,
+                    energy_level=EnergyLevel.HIGH,
+                    is_splittable=False,
+                    min_chunk_duration=30,
+                    max_split_count=1,
+                    required_buffer=15,
+                    dependencies=[]
+                )
+            ),
+            Task(
+                id="task2",
+                title="Task 2",
+                duration=60,
+                due_date=datetime.now() + timedelta(days=1),
+                project_id="proj1",
+                sequence_number=2,
+                constraints=TaskConstraints(
+                    zone_type=ZoneType.DEEP,
+                    energy_level=EnergyLevel.HIGH,
+                    is_splittable=False,
+                    min_chunk_duration=30,
+                    max_split_count=1,
+                    required_buffer=30,
+                    dependencies=[]
+                )
+            )
         ]
 
-        scheduler = Scheduler()
+        # Create scheduler with dependencies
+        scheduler = Scheduler(
+            task_repo=task_repo,
+            calendar_repo=calendar_repo,
+            strategy=strategy
+        )
+
         schedule = scheduler.reschedule(tasks)
 
         task1_event = next(e for e in schedule if e.id == "task1")
@@ -158,50 +208,157 @@ class TestRescheduling:
         Then: Tasks should be rescheduled around fixed events
         And: No overlap should occur
         """
+        # Create mock repositories
+        task_repo = Mock()
+        calendar_repo = Mock()
+        
+        # Create strategy
+        strategy = SequenceBasedStrategy()
+        
+        # Create fixed event
         fixed_event = Event(
             id="meeting",
+            title="Daily Standup",
             start=datetime.now().replace(hour=10),
             end=datetime.now().replace(hour=11),
             type=TimeBlockType.FIXED
         )
 
-        task = Task(id="work", duration=120)
+        task = Task(
+            id="work",
+            title="Work Task",
+            duration=120,
+            due_date=datetime.now() + timedelta(days=1),
+            project_id="proj1",
+            sequence_number=1,
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=False,
+                min_chunk_duration=30,
+                max_split_count=1,
+                required_buffer=15,
+                dependencies=[]
+            )
+        )
 
-        scheduler = Scheduler()
+        # Create scheduler with all required dependencies
+        scheduler = Scheduler(
+            task_repo=task_repo,
+            calendar_repo=calendar_repo,
+            strategy=strategy
+        )
+        
+        # Create work day zones
+        morning_zone = TimeBlockZone(
+            start=datetime.now().replace(hour=9),
+            end=datetime.now().replace(hour=12),
+            zone_type=ZoneType.DEEP,
+            energy_level=EnergyLevel.HIGH,
+            min_duration=30,
+            buffer_required=15,
+            type=TimeBlockType.MANAGED,
+            events=[]
+        )
+        
+        # Mock the zones in the calendar repository
+        calendar_repo.get_zones.return_value = [morning_zone]
+
         schedule = scheduler.reschedule([task], fixed_events=[fixed_event])
 
         work_event = next(e for e in schedule if e.id == "work")
         assert not (work_event.start < fixed_event.end and
                     work_event.end > fixed_event.start)
 
-    def test_reschedule_splits_tasks_when_necessary(self):
+    def test_reschedule_splits_tasks_when_necessary(self, scheduler, work_day_zones):
         """
         When: No continuous block available
         Then: Splittable tasks should be split
         And: Split chunks should respect minimum duration
         """
+        # Create a task that's too long to fit in any single available block
         task = Task(
             id="splittable",
-            duration=240,
-            is_splittable=True,
-            min_chunk_duration=60,
-            max_split_count=4
+            title="Splittable Task",
+            duration=240,  # 4 hours total
+            due_date=datetime.now() + timedelta(days=1),
+            project_id="proj1",
+            sequence_number=1,
+            constraints=TaskConstraints(
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                is_splittable=True,
+                min_chunk_duration=60,  # 1 hour minimum chunks
+                max_split_count=4,
+                required_buffer=15,
+                dependencies=[]
+            )
         )
 
+        # Create fixed events that force splitting
+        morning = datetime.now().replace(hour=9, minute=0)
         fixed_events = [
-            Event(id="meeting1", start=datetime.now().replace(hour=9),
-                  end=datetime.now().replace(hour=10)),
-            Event(id="meeting2", start=datetime.now().replace(hour=14),
-                  end=datetime.now().replace(hour=15))
+            Event(
+                id="meeting1",
+                title="Morning Meeting",
+                start=morning + timedelta(hours=1),  # 10:00
+                end=morning + timedelta(hours=2),    # 11:00
+                type=TimeBlockType.FIXED
+            ),
+            Event(
+                id="meeting2",
+                title="Afternoon Meeting",
+                start=morning + timedelta(hours=3),  # 12:00
+                end=morning + timedelta(hours=4),    # 13:00
+                type=TimeBlockType.FIXED
+            )
         ]
 
-        scheduler = Scheduler()
+        # Create zones that match the task requirements
+        work_day_zones = [
+            TimeBlockZone(
+                start=morning,
+                end=morning + timedelta(hours=8),  # 9:00 - 17:00
+                zone_type=ZoneType.DEEP,
+                energy_level=EnergyLevel.HIGH,
+                min_duration=30,
+                buffer_required=15,
+                events=fixed_events.copy()  # Include fixed events in zone
+            )
+        ]
+
+        # Configure scheduler with our test zones
+        class TestStrategy(SequenceBasedStrategy):
+            def schedule(self, tasks, zones, existing_events):
+                return super().schedule(tasks, work_day_zones, existing_events)
+    
+        scheduler.strategy = TestStrategy()
         schedule = scheduler.reschedule([task], fixed_events=fixed_events)
 
+        # Verify splitting
         split_events = [e for e in schedule if e.id.startswith("splittable")]
-        assert len(split_events) > 1
-        assert all(e.end - e.start >= timedelta(minutes=60)
-                   for e in split_events)
+        assert len(split_events) > 1  # Should have at least 2 chunks
+        
+        # Verify chunk durations
+        assert all(
+            (e.end - e.start).total_seconds() / 60 >= task.constraints.min_chunk_duration 
+            for e in split_events
+        )
+        
+        # Verify no overlap with fixed events
+        for split_event in split_events:
+            for fixed_event in fixed_events:
+                assert not (
+                    split_event.start < fixed_event.end and 
+                    split_event.end > fixed_event.start
+                )
+
+        # Verify total duration matches original task
+        total_duration = sum(
+            (e.end - e.start).total_seconds() / 60 
+            for e in split_events
+        )
+        assert total_duration == task.duration
 
     def test_reschedule_handles_energy_level_changes(self, scheduler, work_day_zones):
         """
