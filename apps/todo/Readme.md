@@ -1,6 +1,65 @@
 # Specification (REF_SP)
 Task Scheduling System: Todoist to Google Calendar Integration
 
+## Development Constraints  (DEVCON)
+
+We ara great fan of TDD technique so we first write tests to fulfill  business requirements and then move to implementation.
+1. Read REF_SP
+2. Read business logic comments in core files
+3. Read existing test cases
+4. Write tests firsts. Follow best TDD and DDD principles. Refer to business logic. When lack of business logic ask user a questions? 
+5. Provide implementation
+
+## Principles (PRINCE)
+
+1. Domain-Driven Design (DDD) Principles
+- Clear bounded context for task scheduling domain
+- Rich domain models (`Task`, `TimeBlockZone`, `Event`)
+- Value objects and entities properly separated
+- Domain logic encapsulated within entities (e.g., `Task.split()`)
+- Ubiquitous language consistently used throughout (reflected in comments and naming)
+
+2. SOLID Principles
+- Single Responsibility: Each class has one clear purpose (e.g., `ConflictDetector`, `SequenceManager`)
+- Open/Closed: Strategy pattern for scheduling algorithms allows extension
+- Liskov Substitution: Clean inheritance hierarchy (e.g., `SchedulingStrategy`)
+- Interface Segregation: Protocols for repositories define minimal interfaces
+- Dependency Inversion: High-level modules depend on abstractions (`TaskRepository`, `CalendarRepository`)
+
+3. Clean Architecture
+- Clear separation of concerns:
+   - Domain layer (`task.py`, `timeblock.py`)
+   - Application services (`scheduler.py`)
+   - Infrastructure interfaces (repository protocols)
+- Domain models independent of external concerns
+- Business rules centralized in domain entities
+- Infrastructure dependencies isolated via protocols
+
+4. Design Patterns
+- Strategy Pattern: `SchedulingStrategy` for different scheduling algorithms
+- Repository Pattern: `TaskRepository` and `CalendarRepository`
+- Factory Pattern: Task creation and splitting
+- Command Pattern: Scheduling operations
+
+5. Immutability and Value Objects
+- Tasks are immutable (using `@dataclass`)
+- Splitting creates new instances rather than modifying
+- Clear value objects for constraints and configurations
+
+6. Testability
+- Dependency injection enables easy mocking
+- Clear separation allows unit testing of business logic
+- Test fixtures demonstrate intended usage
+- Comprehensive test coverage approach
+
+The architecture shows mature understanding of:
+- Separation of concerns
+- Business domain isolation
+- External service adaptation
+- Testing best practices
+
+This is a well-structured enterprise application following established patterns while maintaining pragmatic simplicity.
+
 For AI: Each implementation file has comments that provide:
 * Domain context
 * Business rules

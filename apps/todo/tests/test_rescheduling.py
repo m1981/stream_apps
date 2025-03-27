@@ -141,3 +141,73 @@ class TestRescheduling:
     def test_maintains_dependencies_during_reschedule(self):
         # Test that dependency order is preserved during rescheduling
         pass
+
+    def test_reschedule_maintains_relative_task_order(self, work_day_zones):
+        """
+        When: Multiple independent tasks are rescheduled
+        Then: Their relative order should be maintained if no other constraints conflict
+        And: This should respect original scheduling decisions
+        """
+        now = datetime.now().replace(hour=9, minute=0)
+        
+        # Create independent tasks with same priority and no dependencies
+        task1 = Task(id="task1", duration=30, sequence_number=1, zone_type=ZoneType.LIGHT)
+        task2 = Task(id="task2", duration=30, sequence_number=1, zone_type=ZoneType.LIGHT)
+        task3 = Task(id="task3", duration=30, sequence_number=1, zone_type=ZoneType.LIGHT)
+        
+        scheduler = Scheduler()
+        original_schedule = scheduler.schedule_tasks([task1, task2, task3])
+        
+        # Get original order
+        original_order = [event.id for event in original_schedule]
+        
+        # Modify durations but keep them equal
+        task1.duration = 45
+        task2.duration = 45
+        task3.duration = 45
+        
+        # Reschedule all tasks
+        new_schedule = scheduler.reschedule([task1, task2, task3])
+        new_order = [event.id for event in new_schedule]
+        
+        # Verify relative order is maintained
+        assert new_order == original_order, "Relative task order should be maintained when possible"
+
+    def test_incremental_reschedule_maintains_other_tasks(self, work_day_zones):
+        """
+        When: A single task is modified and rescheduled
+        Then: All unaffected tasks should maintain their exact original schedule
+        And: Only modified task and its dependents should move
+        """
+        now = datetime.now().replace(hour=9, minute=0)
+        
+        # Create a mix of related and unrelated tasks
+        task1 = Task(id="task1", duration=60, sequence_number=1)
+        task2 = Task(id="task2", duration=30, sequence_number=2, dependencies=["task1"])
+        task3 = Task(id="task3", duration=45, sequence_number=3)  # Independent task
+        task4 = Task(id="task4", duration=30, sequence_number=4)  # Independent task
+        
+        scheduler = Scheduler()
+        original_schedule = scheduler.schedule_tasks([task1, task2, task3, task4])
+        
+        # Store original times for verification
+        original_times = {
+            event.id: (event.start, event.end)
+            for event in original_schedule
+        }
+        
+        # Modify task1 and trigger reschedule
+        task1.duration = 90
+        new_schedule = scheduler.reschedule(affected_task_ids=["task1"])
+        
+        # Verify unaffected tasks (task3, task4) maintain exact original schedule
+        for task_id in ["task3", "task4"]:
+            orig_start, orig_end = original_times[task_id]
+            new_event = next(e for e in new_schedule if e.id == task_id)
+            assert new_event.start == orig_start, f"{task_id} start time changed unexpectedly"
+            assert new_event.end == orig_end, f"{task_id} end time changed unexpectedly"
+        
+        # Verify affected tasks (task1, task2) were rescheduled
+        task1_new = next(e for e in new_schedule if e.id == "task1")
+        task2_new = next(e for e in new_schedule if e.id == "task2")
+        assert task2_new.start >= task1_new.end, "Dependency order maintained"
