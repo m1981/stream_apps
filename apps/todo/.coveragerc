@@ -1,34 +1,10 @@
 [run]
-source = src
-branch = True
-omit = 
-    */tests/*
-    */__init__.py
+omit = tests/*
 
 [report]
-# Regexes for lines to exclude from consideration
 exclude_lines =
     pragma: no cover
     def __repr__
     raise NotImplementedError
-    if __name__ == .__main__.:
+    if __name__ == "__main__":
     pass
-    raise ImportError
-    except ImportError:
-
-# Show missing lines in report
-show_missing = True
-
-# Skip empty files
-skip_empty = True
-
-# Don't fail on empty files
-fail_under = 0
-
-# Show a detailed line-by-line report
-precision = 2
-
-[html]
-# More readable styling for HTML report
-show_contexts = True
-title = Coverage Report
