@@ -136,6 +136,7 @@ class SequenceBasedStrategy(SchedulingStrategy):
             current_event = zone_events[i]
             next_event = zone_events[i + 1]
             
+            # Add required buffer after current event
             slot_start = current_event.end + timedelta(minutes=required_buffer)
             slot_duration = (next_event.start - slot_start).total_seconds() / 60
             
@@ -169,73 +170,67 @@ class SequenceBasedStrategy(SchedulingStrategy):
         # Sort zones chronologically
         sorted_zones = sorted(zones, key=lambda z: z.start)
         
-        # Try to schedule chunks across zones
-        current_time = None
+        # Calculate optimal chunk size
+        optimal_chunk_size = max(
+            min(task.duration // 2, 120),  # Try to split into 2 chunks, max 120 mins each
+            task.constraints.min_chunk_duration  # But respect minimum chunk duration
+        )
+        
+        print(f"Calculated optimal chunk size: {optimal_chunk_size} minutes")
+        
         while remaining_duration > 0 and chunk_count < task.constraints.max_split_count:
-            chunk_scheduled = False
+            chunk_duration = min(remaining_duration, optimal_chunk_size)
             
+            print(f"\nAttempting to schedule chunk {chunk_count + 1}")
+            print(f"Chunk duration: {chunk_duration} minutes")
+            print(f"Remaining duration: {remaining_duration} minutes")
+            
+            chunk_scheduled = False
             for zone in sorted_zones:
                 if zone.zone_type != task.constraints.zone_type:
                     continue
                 
-                # Skip zones that are before our current time
-                if current_time and zone.end <= current_time:
-                    continue
-                
-                # Find available slots in this zone
-                zone_start = max(zone.start, current_time) if current_time else zone.start
-                available_slots = self._find_available_slots_with_duration(
-                    zone,
-                    current_events,
-                    task.constraints.min_chunk_duration,
-                    task.constraints.required_buffer
+                slots = self._find_available_slots_with_duration(
+                    zone, current_events, chunk_duration, task.constraints.required_buffer
                 )
                 
-                # Try to schedule in each available slot
-                for slot_start, slot_end in available_slots:
-                    if current_time and slot_start < current_time:
-                        continue
-                        
-                    available_duration = (slot_end - slot_start).total_seconds() / 60
-                    chunk_duration = min(
-                        remaining_duration,
-                        available_duration,
-                        120  # Maximum 2 hours per chunk
+                if slots:
+                    slot_start, slot_end = slots[0]
+                    chunk_id = f"{task.id}_chunk_{chunk_count + 1}"
+                    event = Event(
+                        id=chunk_id,
+                        start=slot_start,
+                        end=slot_start + timedelta(minutes=chunk_duration),
+                        title=f"{task.title} (Part {chunk_count + 1})",
+                        type=TimeBlockType.MANAGED,
+                        buffer_required=task.constraints.required_buffer
                     )
                     
-                    if chunk_duration >= task.constraints.min_chunk_duration:
-                        chunk_id = f"{task.id}_chunk_{chunk_count + 1}"
-                        event = Event(
-                            id=chunk_id,
-                            start=slot_start,
-                            end=slot_start + timedelta(minutes=chunk_duration),
-                            title=f"{task.title} (Part {chunk_count + 1})",
-                            type=TimeBlockType.MANAGED,
-                            buffer_required=task.constraints.required_buffer
-                        )
-                        
-                        # Add event and update tracking
-                        current_events.append(event)
-                        task_events.append(event)
-                        remaining_duration -= chunk_duration
-                        chunk_count += 1
-                        current_time = event.end + timedelta(minutes=task.constraints.required_buffer)
-                        chunk_scheduled = True
-                        break
-            
-            if chunk_scheduled:
-                break
+                    print(f"Scheduled chunk {chunk_count + 1}: {event.start} - {event.end}")
+                    
+                    current_events.append(event)
+                    task_events.append(event)
+                    remaining_duration -= chunk_duration
+                    chunk_count += 1
+                    chunk_scheduled = True
+                    break
+                
+            if not chunk_scheduled:
+                print(f"Failed to schedule chunk {chunk_count + 1}")
+                return False
         
-        if not chunk_scheduled:
-            print(f"\nFailed to schedule remaining chunks")
-            return False
-    
+        print(f"\nFinal scheduling result:")
+        print(f"Total chunks created: {len(task_events)}")
+        print(f"Remaining duration: {remaining_duration}")
+        for idx, event in enumerate(task_events, 1):
+            print(f"Chunk {idx}: {event.start} - {event.end} "
+                  f"({(event.end - event.start).total_seconds() / 60} minutes)")
+        
         if remaining_duration <= 0:
             events.extend(task_events)
             scheduled_task_ids.add(task.id)
             return True
         
-        print(f"\nFailed to schedule all chunks")
         return False
 
     def _try_schedule_chunk_in_zones(self, zones: List[TimeBlockZone], task: Task,

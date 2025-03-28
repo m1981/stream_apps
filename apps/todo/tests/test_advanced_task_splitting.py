@@ -48,10 +48,36 @@ def scheduler(work_day_zones):
     )
 
 def test_reschedule_splits_tasks_when_necessary(scheduler, work_day_zones):
-    """
-    When: No continuous block available
-    Then: Splittable tasks should be split
-    And: Split chunks should respect minimum duration
+    """Test splitting a task across multiple zones when a single continuous block isn't available.
+    
+    Scenario:
+    - Task duration: 4 hours (240 minutes)
+    - Available zones: Two 4-hour DEEP zones (9 AM - 1 PM) on consecutive days
+    - Task constraints:
+        - Must be in DEEP zone
+        - Minimum chunk duration: 1 hour (60 minutes)
+        - Maximum splits allowed: 4
+        - Required buffer between chunks: 15 minutes
+    
+    Expected behavior:
+    - Task should be split into 2 chunks of 2 hours each (120 minutes)
+    - First chunk: 9:00 AM - 11:00 AM (Day 1)
+    - Second chunk: 9:00 AM - 11:00 AM (Day 2)
+    
+    Mathematical analysis:
+    1. Total task duration: 240 minutes (4 hours)
+    2. Each zone duration: 240 minutes (4 hours, 9 AM - 1 PM)
+    3. When split into two chunks:
+       - First chunk: 120 minutes
+       - Required buffer: 15 minutes
+       - Second chunk: 120 minutes
+       Total needed: 255 minutes
+    
+    Note: The current behavior of scheduling the second chunk on Day 2 is correct because:
+    1. The first zone (240 minutes) cannot fit both chunks plus buffer (255 minutes needed)
+    2. Attempting to fit both chunks in one zone would exceed the zone's duration
+    3. The scheduler correctly identifies this constraint and places the second chunk
+       in the next available matching zone type on Day 2
     """
     # Define a fixed reference date for testing
     reference_date = datetime(2024, 1, 1)
@@ -157,11 +183,11 @@ def test_reschedule_splits_tasks_when_necessary(scheduler, work_day_zones):
 
         # Verify second chunk
         second_chunk = sorted_events[1]
-        expected_second_start = first_chunk.end + timedelta(minutes=15)  # Add buffer
+        expected_second_start = (reference_date + timedelta(days=1)).replace(hour=9)  # 9 AM next day
         expected_second_end = expected_second_start + timedelta(minutes=120)
         
         assert second_chunk.start == expected_second_start, (
-            f"Second chunk should start at {expected_second_start} (after buffer), "
+            f"Second chunk should start at {expected_second_start} (next day), "
             f"but started at {second_chunk.start}"
         )
         assert second_chunk.end == expected_second_end, (
