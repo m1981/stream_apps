@@ -1,30 +1,74 @@
+# Commands for AI
 
 # Implementation status (STATUS)
 
-Based on the coverage report and SPEC analysis from `apps/todo/Readme.md`, here's the current status:
+1. Overall Progress
+----------------
+Code coverage: 92% (excellent, aligns with TDD approach in DEVCON)
+Core domain files coverage: 94-95% (shown in htmlcov/index.html)
 
-1. Overall Progress:
-- Code coverage is at 92% which is excellent and aligns with the TDD approach mentioned in DEVCON
-- Core domain files (`task.py`, `timeblock.py`) have high coverage (94-95%)
+2. Implementation Status vs Plan (REF_IP)
+----------------
 
-2. Implementation Status vs Plan (REF_IP):
+✅ Completed/Well Progressed
+----------------
+Task & TimeBlock Core Logic
+- Implementation: src/domain/task.py, src/domain/timeblock.py
+- Status: Complete with high test coverage
 
-✅ Completed/Well Progressed:
-- Task & TimeBlock Core Logic (evidenced by high coverage in domain files)
-- Basic test infrastructure (shown by comprehensive test files)
-- Core domain models implementation
-- Basic scheduling algorithm (indicated by `scheduler.py` presence)
-- Test cases for dependencies, rescheduling, and timeblocks
+Basic Test Infrastructure
+- Implementation: tests/ directory
+- Status: Comprehensive test suite in place
 
-🏗️ In Progress/Partial:
-- Task splitting logic (tests exist but coverage patterns suggest incomplete implementation)
-- Rescheduling features (multiple test files indicate active development)
-- Time Block Zones implementation
+Core Domain Models
+- Implementation: src/domain/task.py
+- Status: Complete with TaskConstraints and business rules
 
-❓ Status Unclear/Potentially Not Started:
-- TodoistAdapter Implementation
-- GoogleCalendarAdapter Implementation
-- Full integration tests with external services
+Basic Scheduling Algorithm
+- Implementation: src/domain/scheduler.py
+- Implementation: src/domain/scheduling/strategies.py
+- Status: Core functionality complete
+
+Dependency Management
+- Tests: tests/test_rescheduling.py
+- Status: Complete with comprehensive tests
+
+Task Splitting Logic
+- Tests: tests/test_advanced_task_splitting.py
+- Tests: tests/test_rescheduling2.py
+- Status: Complete with chunk validation
+
+Time Block Zones
+- Implementation: src/domain/scheduling/base.py
+- Status: Complete with DEEP/LIGHT zones, energy levels, buffers
+
+🏗️ In Progress/Partial
+----------------
+Advanced Rescheduling Features
+- Implementation: tests/test_rescheduling2.py
+- Status: Incomplete conflict resolution
+
+Buffer Management
+- Implementation: src/domain/conflict.py
+- Status: Partial implementation
+
+Zone Transition Handling
+- Implementation: src/domain/scheduling/strategies.py
+- Status: Incomplete _create_multi_day_zones
+
+❓ Status Unclear/Not Started
+----------------
+TodoistAdapter
+- Placeholder: src/infrastructure/adapters.py
+- Status: No tests present
+
+GoogleCalendarAdapter
+- Placeholder: src/infrastructure/adapters.py
+- Status: No tests present
+
+Integration Tests
+- Status: No test files present
+- Required: External services integration
 
 3. Architecture Alignment:
 - The file structure follows Clean Architecture principles outlined in PRINCE
@@ -54,11 +98,11 @@ We are great fans of TDD technique so we first write tests to fulfill business r
 ### Test Writing Instructions
 When writing tests, follow the Gherkin (Given-When-Then) model to clearly express business requirements:
 
-```gherkin
+```
 Feature: [Feature being tested]
 
 Scenario: [Specific scenario being tested]
-  Given [preconditions and setup]
+  Given preconditions and setup]
   When [actions performed]
   Then [expected outcomes]
   And [additional assertions if needed]
@@ -259,6 +303,42 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
    - Maintain task relationships
    - Update all affected events
 
+## System Boundaries
+
+### Error Handling Boundaries
+1. `External Service Interactions`:
+   - Retry Limits: Maximum 3 attempts for external API calls
+   - API Timeouts: Maximum 30 second wait for external services
+   - Circuit Breaker: Disable service after 5 consecutive failures
+
+2. `Data Validation`:
+   - Reject invalid task properties immediately
+   - Validate all incoming API data before processing
+   - Return detailed validation errors
+
+3. `Conflict Resolution`:
+   - System will fail-fast on scheduling conflicts
+   - No automatic conflict resolution
+   - User must manually resolve scheduling conflicts
+   - Calendar sync conflicts abort operation
+
+### User Interaction Boundaries
+
+1. `In Scope`:
+   - Single user task management
+   - Basic task property updates
+   - Schedule viewing and confirmation
+   - Manual rescheduling triggers
+   - Basic error notifications
+
+2. `Out of Scope`:
+   - Multi-user collaboration
+   - Complex task patterns
+   - Real-time updates
+   - Mobile notifications
+   - Automated conflict resolution
+   - Task templates
+   - Recurring task patterns
 
 
 # Implementation Plan (REF_IP)
