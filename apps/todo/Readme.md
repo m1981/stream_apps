@@ -83,9 +83,6 @@ Integration Tests
 
 
 
-# Specification (SPEC)
-Task Scheduling System: Todoist to Google Calendar Integration
-
 ## Development Constraints  (DEVCON)
 
 We are great fans of TDD technique so we first write tests to fulfill business requirements and then move to implementation.
@@ -95,7 +92,7 @@ We are great fans of TDD technique so we first write tests to fulfill business r
 4. Write tests first. Follow best TDD and DDD principles. Refer to business logic. When lack of business logic ask user questions.
 5. Provide implementation
 
-### Test Writing Instructions
+### Test Writing Instructions (TWIN)
 When writing tests, follow the Gherkin (Given-When-Then) model to clearly express business requirements:
 
 ```
@@ -165,6 +162,10 @@ For AI: Each implementation file has comments that provide:
 * Business rules
 * Architectural decisions
 * System constraints
+
+
+# Specification (SPEC)
+Task Scheduling System: Todoist to Google Calendar Integration
 
 ## Overview
 This system is designed to bridge the gap between task management (Todoist) and time management (Google Calendar) by intelligently scheduling tasks into appropriate time blocks while respecting existing commitments. The core purpose is to transform a list of tasks into a realistic, time-blocked schedule that optimizes productivity through strategic time allocation.
@@ -339,7 +340,6 @@ Let me enhance the definitions by incorporating time blocking zones, which is an
    - Automated conflict resolution
    - Task templates
    - Recurring task patterns
-
 
 # Implementation Plan (REF_IP)
 
