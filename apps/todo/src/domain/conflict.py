@@ -34,6 +34,12 @@ class SchedulingConflict:
     proposed_start: datetime
     message: str
 
+class ZoneTransitionConflict:
+    def __init__(self, message: str, start_zone: TimeBlockZone, end_zone: TimeBlockZone):
+        self.message = message
+        self.start_zone = start_zone
+        self.end_zone = end_zone
+
 class ConflictDetector:
     """
     Detects scheduling conflicts for tasks based on:
@@ -157,4 +163,69 @@ class ConflictDetector:
                 return current_time
             current_time += timedelta(minutes=15)  # 15-minute increments
             
+        return None
+
+    @staticmethod
+    def find_zone_transition_conflicts(task: Task, start_time: datetime, 
+                                     zones: List[TimeBlockZone]) -> Optional[ZoneTransitionConflict]:
+        """
+        Check if a task crosses incompatible zone boundaries.
+        
+        Args:
+            task: Task to check
+            start_time: Proposed start time
+            zones: Available time block zones
+            
+        Returns:
+            ZoneTransitionConflict if found, None otherwise
+        """
+        end_time = start_time + timedelta(minutes=task.duration)
+        
+        # Sort zones by start time
+        sorted_zones = sorted(zones, key=lambda z: z.start)
+        
+        current_zone = None
+        for zone in sorted_zones:
+            if zone.start <= start_time < zone.end:
+                current_zone = zone
+                break
+                
+        if not current_zone:
+            return ZoneTransitionConflict(
+                "No valid starting zone found",
+                None,
+                None
+            )
+            
+        # Check if task extends beyond current zone
+        if end_time > current_zone.end:
+            # Find next zone
+            next_zone_index = sorted_zones.index(current_zone) + 1
+            if next_zone_index >= len(sorted_zones):
+                return ZoneTransitionConflict(
+                    "Task extends beyond available zones",
+                    current_zone,
+                    None
+                )
+                
+            next_zone = sorted_zones[next_zone_index]
+            
+            # Check zone compatibility
+            if (current_zone.zone_type != next_zone.zone_type or 
+                current_zone.energy_level != next_zone.energy_level):
+                return ZoneTransitionConflict(
+                    f"Incompatible zone transition: {current_zone.zone_type}/{current_zone.energy_level} -> "
+                    f"{next_zone.zone_type}/{next_zone.energy_level}",
+                    current_zone,
+                    next_zone
+                )
+                
+            # Check for time gap between zones
+            if next_zone.start > current_zone.end:
+                return ZoneTransitionConflict(
+                    f"Gap between zones: {current_zone.end} -> {next_zone.start}",
+                    current_zone,
+                    next_zone
+                )
+                
         return None
