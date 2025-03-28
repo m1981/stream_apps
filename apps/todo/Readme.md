@@ -1,3 +1,42 @@
+# Quick Reference Guide
+
+## Core Document Tags
+- 🔍 STATUS - Implementation Status & Progress
+- 📋 SPEC - System Specifications
+- 👑 PRINCE - Architecture Principles
+- ✅ DEVCON - Development Constraints
+- 🧪 TWIN - Test Writing Instructions
+- 📝 REF_IP - Implementation Plan Reference
+
+## Command Format
+Use these tags in your prompts:
+
+@STATUS - Check current implementation status
+@SPEC - Review system specifications
+@PRINCE - Verify architectural principles
+@DEVCON - Review development constraints
+@TWIN - Get test writing guidelines
+@REF_IP - Check implementation plan
+
+Example usage:
+"@STATUS what's the current code coverage?"
+"@SPEC show me task properties"
+"@PRINCE verify DDD compliance"
+
+## Quick Status Indicators
+✅ Complete
+🟡 In Progress
+❌ Not Started
+⭐ High Priority
+
+## Document Cross-References
+- For business rules: @SPEC
+- For testing approach: @TWIN + @DEVCON
+- For implementation: @PRINCE + @REF_IP
+- For progress check: @STATUS
+
+Note: Use @ symbol to reference specific sections in your queries.
+
 # Commands for AI
 
 # Implementation status (STATUS)
@@ -80,6 +119,7 @@ Integration Tests
 2. Finish implementation of advanced scheduling features
 3. Add integration tests with real external services
 4. Document edge cases and limitations
+
 
 
 
