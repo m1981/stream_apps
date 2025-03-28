@@ -73,22 +73,41 @@ class SequenceBasedStrategy(SchedulingStrategy):
 
     def _find_available_slots(self, zone: TimeBlockZone, events: List[Event], 
                             min_duration: int) -> List[Tuple[datetime, datetime]]:
-        """Find available time slots in a zone"""
+        """Find available time slots in a zone, respecting buffer requirements"""
         slots = []
         current = zone.start
         
-        # Get events that overlap with this zone
-        zone_events = [e for e in events if e.end > zone.start and e.start < zone.end]
+        # Get events that overlap with this zone, including fixed events
+        zone_events = [
+            e for e in events 
+            if e.end > zone.start and e.start < zone.end
+        ]
         zone_events.sort(key=lambda e: e.start)
         
-        for event in zone_events:
-            if (event.start - current).total_seconds() / 60 >= min_duration:
-                slots.append((current, event.start))
-            current = max(current, event.end)
+        if not zone_events:
+            if (zone.end - zone.start).total_seconds() / 60 >= min_duration:
+                slots.append((zone.start, zone.end))
+            return slots
+        
+        # Check slot before first event
+        if (zone_events[0].start - current).total_seconds() / 60 >= min_duration:
+            slots.append((current, zone_events[0].start))
+        
+        # Check slots between events
+        for i in range(len(zone_events) - 1):
+            current_event = zone_events[i]
+            next_event = zone_events[i + 1]
             
-        if (zone.end - current).total_seconds() / 60 >= min_duration:
-            slots.append((current, zone.end))
-            
+            slot_start = current_event.end + timedelta(minutes=current_event.buffer_required)
+            if (next_event.start - slot_start).total_seconds() / 60 >= min_duration:
+                slots.append((slot_start, next_event.start))
+        
+        # Check final slot
+        last_event = zone_events[-1]
+        final_start = last_event.end + timedelta(minutes=last_event.buffer_required)
+        if (zone.end - final_start).total_seconds() / 60 >= min_duration:
+            slots.append((final_start, zone.end))
+        
         return slots
 
     def _try_schedule_split_task(self, task: Task, zones: List[TimeBlockZone], 
@@ -97,56 +116,114 @@ class SequenceBasedStrategy(SchedulingStrategy):
         remaining_duration = task.duration
         chunk_count = 0
         task_events = []
+        current_events = events.copy()
         
-        while remaining_duration > 0 and chunk_count < task.constraints.max_split_count:
-            scheduled_chunk = False
+        print(f"\n=== Starting split scheduling for task: {task.id} ===")
+        print(f"Total duration: {task.duration} minutes")
+        print(f"Min chunk duration: {task.constraints.min_chunk_duration} minutes")
+        print(f"Max split count: {task.constraints.max_split_count}")
+        print(f"Buffer required: {task.constraints.required_buffer} minutes")
+        
+        # Sort zones chronologically
+        sorted_zones = sorted(zones, key=lambda z: z.start)
+        
+        # Try to schedule chunks across multiple zones if needed
+        for zone in sorted_zones:
+            if remaining_duration <= 0:
+                break
             
-            for zone in zones:
-                if zone.zone_type != task.constraints.zone_type:
-                    continue
-                    
-                # Find available slots in this zone
-                available_slots = self._find_available_slots(
-                    zone, events, task.constraints.min_chunk_duration
+            if zone.zone_type != task.constraints.zone_type:
+                print(f"\nSkipping zone {zone.start} - {zone.end} (incompatible type: {zone.zone_type})")
+                continue
+            
+            print(f"\nTrying zone: {zone.start} - {zone.end}")
+            print(f"Zone type: {zone.zone_type}")
+            print(f"Remaining duration: {remaining_duration} minutes")
+            
+            # Find available slots in this zone
+            available_slots = self._find_available_slots(
+                zone, current_events, task.constraints.min_chunk_duration
+            )
+            
+            for slot_start, slot_end in available_slots:
+                if remaining_duration <= 0 or chunk_count >= task.constraints.max_split_count:
+                    break
+                
+                # Calculate chunk duration for this slot
+                available_duration = (slot_end - slot_start).total_seconds() / 60
+                chunk_duration = min(
+                    remaining_duration,
+                    available_duration,
+                    120  # Maximum 2 hours per chunk
                 )
                 
-                for slot_start, slot_end in available_slots:
-                    # Calculate chunk duration
-                    available_duration = (slot_end - slot_start).total_seconds() / 60
-                    chunk_duration = min(
-                        remaining_duration,
-                        available_duration,
-                        120  # Maximum 2 hours per chunk for better splitting
+                if chunk_duration >= task.constraints.min_chunk_duration:
+                    chunk_id = f"{task.id}_chunk_{chunk_count + 1}"
+                    event = Event(
+                        id=chunk_id,
+                        start=slot_start,
+                        end=slot_start + timedelta(minutes=chunk_duration),
+                        title=f"{task.title} (Part {chunk_count + 1})",
+                        type=TimeBlockType.MANAGED,
+                        buffer_required=task.constraints.required_buffer
                     )
                     
-                    if chunk_duration >= task.constraints.min_chunk_duration:
-                        chunk_id = f"{task.id}_chunk_{chunk_count + 1}"
-                        event = Event(
-                            id=chunk_id,
-                            start=slot_start,
-                            end=slot_start + timedelta(minutes=chunk_duration),
-                            title=f"{task.title} (Part {chunk_count + 1})",
-                            type=TimeBlockType.MANAGED,
-                            buffer_required=task.constraints.required_buffer
-                        )
-                        task_events.append(event)
-                        remaining_duration -= chunk_duration
-                        chunk_count += 1
-                        scheduled_chunk = True
-                        break
-                
-                if scheduled_chunk:
-                    break
-            
-            if not scheduled_chunk:
-                return False
+                    print(f"Created chunk {chunk_count + 1}:")
+                    print(f"Start: {event.start}")
+                    print(f"End: {event.end}")
+                    print(f"Duration: {chunk_duration} minutes")
+                    
+                    task_events.append(event)
+                    current_events.append(event)
+                    remaining_duration -= chunk_duration
+                    chunk_count += 1
+                    
+                    print(f"Remaining duration: {remaining_duration} minutes")
         
         if remaining_duration <= 0:
+            print("\nSuccessfully scheduled all chunks")
             events.extend(task_events)
             for event in task_events:
-                scheduled_task_ids.add(event.id)
+                scheduled_task_ids.add(event.id.split('_chunk_')[0])  # Add base task ID
             return True
+        
+        print(f"\nFailed to schedule all chunks. Remaining duration: {remaining_duration}")
+        return False
+
+    def _try_schedule_chunk_in_zones(self, zones: List[TimeBlockZone], task: Task,
+                                    remaining_duration: int, chunk_count: int,
+                                    current_events: List[Event],
+                                    task_events: List[Event]) -> bool:
+        """Try to schedule a single chunk within the given zones"""
+        for zone in zones:
+            if zone.zone_type != task.constraints.zone_type:
+                continue
             
+            available_slots = self._find_available_slots(
+                zone, current_events, task.constraints.min_chunk_duration
+            )
+            
+            for slot_start, slot_end in available_slots:
+                available_duration = (slot_end - slot_start).total_seconds() / 60
+                chunk_duration = min(
+                    remaining_duration,
+                    available_duration,
+                    120  # Maximum 2 hours per chunk for better splitting
+                )
+                
+                if chunk_duration >= task.constraints.min_chunk_duration:
+                    chunk_id = f"{task.id}_chunk_{chunk_count + 1}"
+                    event = Event(
+                        id=chunk_id,
+                        start=slot_start,
+                        end=slot_start + timedelta(minutes=chunk_duration),
+                        title=f"{task.title} (Part {chunk_count + 1})",
+                        type=TimeBlockType.MANAGED,
+                        buffer_required=task.constraints.required_buffer
+                    )
+                    task_events.append(event)
+                    return True
+                
         return False
 
     def _try_schedule_task(self, task: Task, zones: List[TimeBlockZone], 
