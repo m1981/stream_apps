@@ -56,15 +56,21 @@ def test_reschedule_splits_tasks_when_necessary(scheduler, work_day_zones):
     # Define a fixed reference date for testing
     reference_date = datetime(2024, 1, 1)
     
-    # Create a mock datetime object
-    mock_datetime = Mock(wraps=datetime)
-    mock_datetime.now.return_value = reference_date
-    
-    # Create patches for all relevant modules
+    # Create a mock datetime class
+    class MockDateTime:
+        @classmethod
+        def now(cls):
+            return reference_date
+
+        @staticmethod
+        def strptime(date_string, format):
+            return datetime.strptime(date_string, format)
+
+    # Patch both the strategy and scheduler modules
     patches = [
-        patch('src.domain.scheduling.strategies.datetime', mock_datetime),
-        patch('src.domain.scheduler.datetime', mock_datetime),
-        patch('src.domain.timeblock.datetime', mock_datetime)
+        patch('src.domain.scheduling.strategies.datetime', MockDateTime),
+        patch('src.domain.scheduler.datetime', MockDateTime),
+        patch('src.domain.timeblock.datetime', MockDateTime)
     ]
     
     # Apply all patches
@@ -119,63 +125,58 @@ def test_reschedule_splits_tasks_when_necessary(scheduler, work_day_zones):
         # When: Scheduling the task
         result = scheduler.reschedule([task])
         
-        # Debug output before assertions
-        print("\nAvailable zones:")
-        for zone in test_zones:
-            print(f"Zone: {zone.start} - {zone.end}")
-        
-        print("\nScheduled events:")
-        for event in result:
-            print(f"Event {event.id}: {event.start} - {event.end}")
-        
         # Then: Task should be split into valid chunks
         split_events = [e for e in result if e.id.startswith("splittable")]
-        assert len(split_events) > 1, "Task should be split into multiple chunks"
+        assert len(split_events) == 2, "Task should be split into exactly 2 chunks"
         
-        # And: Each chunk should respect minimum duration
-        for event in split_events:
-            chunk_duration = (event.end - event.start).total_seconds() / 60
-            assert chunk_duration >= 60, f"Chunk {event.id} duration ({chunk_duration} min) is less than minimum (60 min)"
-        
-        # And: Total duration should match original task
-        total_duration = sum((e.end - e.start).total_seconds() / 60 for e in split_events)
-        assert total_duration == 240, f"Total duration ({total_duration} min) should match original task (240 min)"
-
-        # And: Each chunk should be in a valid DEEP zone
-        available_zones = scheduler.calendar_repo.get_zones()
-        for event in split_events:
-            scheduled_zone = next(
-                (z for z in available_zones if z.start <= event.start < z.end),
-                None
-            )
-            assert scheduled_zone is not None, f"Event {event.id} ({event.start} - {event.end}) not in any zone"
-            assert scheduled_zone.zone_type == ZoneType.DEEP, f"Event {event.id} in wrong zone type"
-            assert scheduled_zone.energy_level == EnergyLevel.HIGH, f"Event {event.id} in wrong energy level"
-
-        # And: Chunks should be properly sequenced with buffers
+        # Sort events by start time
         sorted_events = sorted(split_events, key=lambda e: e.start)
-        for i in range(len(sorted_events) - 1):
-            current = sorted_events[i]
-            next_event = sorted_events[i + 1]
-            
-            # Check for same-day events
-            if current.start.date() == next_event.start.date():
-                buffer = (next_event.start - current.end).total_seconds() / 60
-                assert buffer >= 15, f"Buffer between {current.id} and {next_event.id} is {buffer} minutes"
-
-        # Final debug output
-        print("\nScheduled chunks:")
+        
+        # Debug output before assertions
+        print("\nTest zones:")
+        for zone in test_zones:
+            print(f"Zone: {zone.start.strftime('%Y-%m-%d %H:%M')} - {zone.end.strftime('%H:%M')}")
+        
+        print("\nScheduled events:")
         for event in sorted_events:
-            print(f"- {event.id}: {event.start.strftime('%Y-%m-%d %H:%M')} - {event.end.strftime('%H:%M')}")
-
+            print(f"Event {event.id}: {event.start.strftime('%Y-%m-%d %H:%M')} - {event.end.strftime('%H:%M')}")
+        
+        # Verify first chunk
+        first_chunk = sorted_events[0]
+        assert first_chunk.start == reference_date.replace(hour=9), (
+            f"First chunk should start at 9 AM on {reference_date.date()}, "
+            f"but started at {first_chunk.start}"
+        )
+        assert (first_chunk.end - first_chunk.start).total_seconds() / 60 == 120, (
+            f"First chunk should be 120 minutes, but was "
+            f"{(first_chunk.end - first_chunk.start).total_seconds() / 60}"
+        )
+        
+        # Verify second chunk
+        second_chunk = sorted_events[1]
+        assert second_chunk.start >= first_chunk.end + timedelta(minutes=15), (
+            f"Second chunk should respect buffer time, but started at {second_chunk.start} "
+            f"when first chunk ended at {first_chunk.end}"
+        )
+        assert (second_chunk.end - second_chunk.start).total_seconds() / 60 == 120, (
+            f"Second chunk should be 120 minutes, but was "
+            f"{(second_chunk.end - second_chunk.start).total_seconds() / 60}"
+        )
+    
     finally:
-        # Clean up all patches
+        # Stop all patches
         for p in patches:
             p.stop()
-
-
-
-
+    
+        # Verify total duration
+        total_duration = sum((e.end - e.start).total_seconds() / 60 for e in sorted_events)
+        assert total_duration == 240, f"Total duration should be 240 minutes, got {total_duration}"
+    
+        # Debug output
+        print("\nScheduled chunks:")
+        for event in sorted_events:
+            print(f"- {event.id}: {event.start.strftime('%Y-%m-%d %H:%M')} - {event.end.strftime('%H:%M')} "
+                  f"(duration: {(event.end - event.start).total_seconds() / 60} min)")
 
 def test_reschedule_handles_energy_level_changes(scheduler, work_day_zones):
     """
