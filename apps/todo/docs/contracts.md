@@ -1,3 +1,4 @@
+```mermaid
 classDiagram
 class Task {
 +id: str
@@ -55,3 +56,4 @@ class Task {
     SchedulingStrategy --> TimeBlock
     ExternalAdapter --> Task
     ExternalAdapter --> TimeBlock
+```

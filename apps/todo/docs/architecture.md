@@ -1,3 +1,12 @@
+@ARCH
+
+The architecture shows mature understanding of:
+- Separation of concerns
+- Business domain isolation
+- External service adaptation
+- Testing best practices
+
+```mermaid
 graph TD
 %% Domain Layer
 subgraph Domain["Domain Layer"]
@@ -68,3 +77,4 @@ Scheduler["`Scheduler
     ConflictTests --> Conflict
     SplittingTests --> Splitting
     ReschedulingTests --> Scheduler
+```
