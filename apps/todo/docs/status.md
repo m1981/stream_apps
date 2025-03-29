@@ -1,7 +1,15 @@
 @STATUS
 
 Task & TimeBlock Core Logic
-- Implementation: src/domain/task.py, src/domain/timeblock.py
+- Implementation: 
+  - `src/domain/task.py`:
+    - `Task` class with immutable design
+    - `TaskConstraints` dataclass for validation
+    - Methods: `split()`, `validate()`
+  - `src/domain/timeblock.py`:
+    - `TimeBlockZone` class for zone management
+    - `Event` class for calendar entries
+    - Methods: `is_available()`, `validate_placement()`
 - Status: Complete with comprehensive implementation
 - Features: 
   - Task constraints and validation
@@ -10,7 +18,11 @@ Task & TimeBlock Core Logic
   - Buffer management foundations
 
 Conflict Detection System
-- Implementation: src/domain/conflict.py
+- Implementation: `src/domain/conflict.py`
+  - `ConflictDetector` class:
+    - Methods: `find_conflicts()`, `find_available_slot()`, `find_zone_transition_conflicts()`
+  - `SchedulingConflict` dataclass
+  - `ZoneTransitionConflict` class
 - Status: More complete than previously indicated
 - Features:
   - Time slot availability validation
@@ -20,7 +32,11 @@ Conflict Detection System
   - Conflict detection for events
 
 Task Splitting System
-- Implementation: src/domain/splitting.py
+- Implementation: `src/domain/splitting.py`
+  - `SplitStrategy` class:
+    - Methods: `calculate_optimal_split()`, `analyze_zone_patterns()`
+  - `SplitMetrics` dataclass
+  - `ChunkPlacement` dataclass
 - Status: Well-developed core functionality
 - Features:
   - Split metrics calculation
@@ -29,7 +45,13 @@ Task Splitting System
   - Buffer time consideration
 
 Basic Scheduling Algorithm
-- Implementation: src/domain/scheduler.py, src/domain/scheduling/strategies.py
+- Implementation: 
+  - `src/domain/scheduler.py`:
+    - `Scheduler` class
+    - Methods: `schedule_tasks()`, `reschedule()`, `clean()`
+  - `src/domain/scheduling/strategies.py`:
+    - `SchedulingStrategy` protocol
+    - Various strategy implementations
 - Status: Core functionality complete
 - Features:
   - Strategy pattern implementation
@@ -38,18 +60,36 @@ Basic Scheduling Algorithm
   - Basic scheduling logic
 
 Task Splitting Logic
-- Tests: tests/test_advanced_task_splitting.py, tests/test_rescheduling2.py
+- Tests: 
+  - `tests/test_advanced_task_splitting.py`:
+    - Tests for chunk validation
+    - Split optimization tests
+  - `tests/test_rescheduling2.py`:
+    - Rescheduling scenarios
+    - Split task handling
 - Status: Complete with chunk validation
-- Features: Minimum chunk duration, maximum split count
+- Features: 
+  - Minimum chunk duration
+  - Maximum split count
 
 Time Block Zones
-- Implementation: src/domain/scheduling/base.py
+- Implementation: `src/domain/scheduling/base.py`
+  - Zone type definitions
+  - Energy level management
+  - Buffer calculations
 - Status: Partial completion
-- Complete: DEEP/LIGHT zones, energy levels, basic buffers
-- Missing: Admin zone implementation, zone-specific buffer rules
+- Complete: 
+  - DEEP/LIGHT zones
+  - Energy levels
+  - Basic buffers
+- Missing: 
+  - Admin zone implementation
+  - Zone-specific buffer rules
 
 Zone Management
-- Implementation: src/domain/scheduling/strategies.py
+- Implementation: `src/domain/scheduling/strategies.py`
+  - Zone handling in scheduling strategies
+  - TimeBlock management
 - Status: Partially complete
 - Complete:
   - Basic zone definition
@@ -62,24 +102,32 @@ Zone Management
   - Multi-day zone management
 
 Buffer Management
-- Implementation: src/domain/conflict.py
+- Implementation: `src/domain/conflict.py`
+  - Buffer validation in ConflictDetector
+  - Zone-specific buffer rules
 - Status: More complete than indicated
 - Complete:
-    - Basic buffer validation
-    - Zone-specific checks
+  - Basic buffer validation
+  - Zone-specific checks
 - Missing:
-    - Advanced transition buffers
-    - Multi-zone buffer optimization
+  - Advanced transition buffers
+  - Multi-zone buffer optimization
 
 External Adapters
 - Required: TodoistAdapter
-  - Task fetching and sync
-  - Status updates
-  - Error handling
+  - Location: `src/infrastructure/adapters.py`
+  - Status: Interface defined, implementation incomplete
+  - Missing:
+    - Task fetching and sync
+    - Status updates
+    - Error handling
 - Required: GoogleCalendarAdapter
-  - Event management
-  - Calendar sync
-  - Conflict resolution
+  - Location: `src/infrastructure/adapters.py`
+  - Status: Interface defined, implementation incomplete
+  - Missing:
+    - Event management
+    - Calendar sync
+    - Conflict resolution
 
 Integration Testing
 - Required:
@@ -87,3 +135,5 @@ Integration Testing
   - End-to-end scheduling flows
   - Error handling scenarios
   - Calendar sync validation
+- Status: Not implemented
+- Location: Tests to be added in `tests/integration/`
